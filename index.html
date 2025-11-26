@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hologlyph Player Demo</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .canvas-container {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 2rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            border: 2px solid #4a5568;
+            border-radius: 4px;
+            background: #0f0f1e;
+        }
+        .controls {
+            margin-top: 1.5rem;
+        }
+        .drop-zone {
+            position: relative;
+        }
+        .drop-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(102, 126, 234, 0.9);
+            border: 3px dashed #fff;
+            border-radius: 8px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        .drop-overlay.active {
+            display: flex;
+        }
+        .drop-overlay p {
+            color: #fff;
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin: 0.5rem;
+        }
+        .drop-overlay .icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <section class="section">
+        <div class="container">
+            <div class="columns is-centered">
+                <div class="column is-8">
+                    <div class="box has-background-white-ter">
+                        <h1 class="title has-text-centered has-text-primary">
+                            🔮 Hologlyph Player
+                        </h1>
+                        <p class="subtitle has-text-centered">
+                            Interactive 3D Voxel Animation
+                        </p>
+                        
+                        <div class="canvas-container drop-zone" id="dropZone">
+                            <canvas id="hologlyphCanvas" width="512" height="512"></canvas>
+                            <div class="drop-overlay" id="dropOverlay">
+                                <div class="icon">📁</div>
+                                <p>Drop .glyf file here</p>
+                                <p style="font-size: 1rem; opacity: 0.9;">or click to browse</p>
+                            </div>
+                            <input type="file" id="fileInput" accept=".glyf" style="display: none;">
+                        </div>
+                        
+                        <div class="controls">
+                            <div class="buttons is-centered">
+                                <button class="button is-success" id="playBtn">
+                                    <span>▶ Play</span>
+                                </button>
+                                <button class="button is-warning" id="pauseBtn">
+                                    <span>⏸ Pause</span>
+                                </button>
+                                <button class="button is-danger" id="stopBtn">
+                                    <span>⏹ Stop</span>
+                                </button>
+                                <button class="button is-info" id="exportBtn">
+                                    <span>💾 Export .glyf</span>
+                                </button>
+                            </div>
+                            
+                            <div class="field">
+                                <label class="label">Voxel Size</label>
+                                <div class="control">
+                                    <input class="slider is-fullwidth" id="voxelSlider" type="range" 
+                                           min="4" max="16" value="8" step="1">
+                                </div>
+                                <p class="help has-text-centered">Current: <span id="voxelValue">8</span>px</p>
+                            </div>
+                            
+                            <div class="field">
+                                <label class="checkbox">
+                                    <input type="checkbox" id="compressCheckbox" checked>
+                                    Compress on export (RLE)
+                                </label>
+                                <p class="help">Reduces file size for animations with repeated colors or empty space</p>
+                            </div>
+                        </div>
+                        
+                        <div class="notification is-info is-light mt-4">
+                            <p><strong>Demo:</strong> This shows a procedurally generated floating pyramid (gold to green gradient) with a dynamic shadow. 
+                               The animation is generated, compressed with RLE, then loaded into the player — demonstrating the full workflow: <strong>create → compress → load (auto-decompress) → play</strong>.</p>
+                            <p><br></p>
+                               <p><strong>Features:</strong> 
+                               • 60-frame animation (32×32×32 grid) with rotation and bobbing<br>
+                               • RLE compression (check console for compression stats)<br>
+                               • Dynamic shadow that scales with height<br>
+                               • WebGL rendering with proper 3D cube voxels<br>
+                               • Orbital camera (drag to rotate, scroll to zoom)<br>
+                               • <strong>Drag & drop .glyf files</strong> to view your own animations<br>
+                               • Export button to save the animation (compressed by default)
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script type="module">
+        import { createHologlyphHeader, HSBAUtil, HologlyphPlayer, exportToFile, getCompressionStats, compressGlyfFile } from './hologlyph.js';
+
+          // Create sample hologlyph data - floating pyramid animation
+          const res = 32;
+          function createSampleHologlyph() {
+            const width = res;
+            const height = res;
+            const depth = res;
+            const frameCount = 60;
+            const frameDurationMs = 50;
+            
+            const header = createHologlyphHeader({
+                width,
+                height,
+                depth,
+                frameCount,
+                frameDurationMs,
+                loop: true,
+                loopStartFrame: 0,
+                bytesPerVoxel: 4,
+            });
+            
+            const voxelsPerFrame = width * height * depth;
+            const bytesPerFrame = voxelsPerFrame * 4;
+            const totalSize = header.length + (bytesPerFrame * frameCount);
+            const buffer = new Uint8Array(totalSize);
+            
+            // Copy header
+            buffer.set(header, 0);
+            
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const centerZ = depth / 2;
+            const pyramidSize = 12;
+            const bobAmount = 2;
+            const shadowY = 2;
+            
+            // Helper function to check if point is inside square-based pyramid
+            function isInsidePyramid(px, py, pz, pyramidHeight) {
+                if (py < 0 || py >= pyramidHeight) return false;
+                const halfSize = pyramidSize * (1 - py / pyramidHeight);
+                return Math.abs(px) <= halfSize && Math.abs(pz) <= halfSize;
+            }
+            
+            // Helper function to rotate point around Y axis
+            function rotateY(px, py, pz, angle) {
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
+                return {
+                    x: px * cos - pz * sin,
+                    y: py,
+                    z: px * sin + pz * cos
+                };
+            }
+            
+            // Generate animated voxel data
+            let offset = header.length;
+            
+            for (let frame = 0; frame < frameCount; frame++) {
+                const t = frame / frameCount;
+                
+                // Bobbing motion (sine wave)
+                const bobOffset = Math.sin(t * Math.PI * 2) * bobAmount;
+                
+                // Rotation angle (only Y-axis for pyramid)
+                const rotationY = t * Math.PI * 2;
+                
+                // Shadow size based on height (inverse relationship - closer = larger shadow)
+                const shadowScale = 1.2 - (bobOffset / bobAmount) * 0.3;
+                
+                for (let z = 0; z < depth; z++) {
+                    for (let y = 0; y < height; y++) {
+                        for (let x = 0; x < width; x++) {
+                            let h = 0, s = 0, b = 0, a = 0;
+                            
+                            // Transform to local coordinates
+                            const localX = x - centerX;
+                            const localY = y - (centerY - 3) - bobOffset;
+                            const localZ = z - centerZ;
+                            
+                            // Apply pyramid's Y-axis rotation
+                            const pyramidRotated = rotateY(localX, localY, localZ, -rotationY);
+                            
+                            // Check if inside pyramid
+                            if (isInsidePyramid(pyramidRotated.x, pyramidRotated.y, pyramidRotated.z, pyramidSize)) {
+                                // Color based on height (gold to green gradient)
+                                const heightPercent = pyramidRotated.y / pyramidSize;
+                                h = 30 + heightPercent * 85; // Gold (30) to green (115)
+                                s = 85;
+                                b = 70 + (1 - heightPercent) * 20;
+                                a = 95;
+                            }
+                            
+                            // Draw square shadow on the ground
+                            if (y === shadowY) {
+                                const shadowDistX = Math.abs((x - centerX) / shadowScale);
+                                const shadowDistZ = Math.abs((z - centerZ) / shadowScale);
+                                const shadowSize = pyramidSize * 0.8;
+                                
+                                if (shadowDistX < shadowSize && shadowDistZ < shadowSize) {
+                                    const maxDist = Math.max(shadowDistX, shadowDistZ);
+                                    const shadowIntensity = 1 - (maxDist / shadowSize);
+                                    h = 0;
+                                    s = 0;
+                                    b = 10 + shadowIntensity * 10;
+                                    a = shadowIntensity * 40;
+                                }
+                            }
+                            
+                            const pixel = HSBAUtil.encodePixel({ h, s, b, a });
+                            buffer.set(pixel, offset);
+                            offset += 4;
+                        }
+                    }
+                }
+            }
+            
+            return buffer;
+        }
+
+        // Generate the .glyf file data once
+        console.log('Generating floating pyramid animation...');
+        const uncompressedData = createSampleHologlyph();
+        console.log(`Generated: ${uncompressedData.length} bytes (${(uncompressedData.length / 1024).toFixed(2)} KB)`);
+        
+        // Compress the data (demonstrating the full workflow)
+        const hologlyphData = compressGlyfFile(uncompressedData);
+        const stats = getCompressionStats(uncompressedData, hologlyphData);
+        console.log(`Compressed: ${hologlyphData.length} bytes (${(hologlyphData.length / 1024).toFixed(2)} KB)`);
+        console.log(`Compression ratio: ${stats.ratio} (${stats.savings} savings)`);
+        
+        // Initialize player with the compressed data
+        // The player will automatically decompress it
+        const canvas = document.getElementById('hologlyphCanvas');
+        let player = new HologlyphPlayer({
+            canvas,
+            data: hologlyphData,
+            autoPlay: true,
+            voxelSize: 8,
+            orbitalDrag: true,
+            useWebGL: true
+        });
+
+        // Control buttons
+        document.getElementById('playBtn').addEventListener('click', () => {
+            player.play();
+        });
+
+        document.getElementById('pauseBtn').addEventListener('click', () => {
+            player.pause();
+        });
+
+        document.getElementById('stopBtn').addEventListener('click', () => {
+            player.stop();
+        });
+
+        // Export button - export the generated data
+        document.getElementById('exportBtn').addEventListener('click', () => {
+            const compress = document.getElementById('compressCheckbox').checked;
+            const filename = compress ? 'floating-pyramid-compressed.glyf' : 'floating-pyramid.glyf';
+            
+            if (compress) {
+                // Export the already-compressed data
+                exportToFile(hologlyphData, filename, false); // Don't compress again!
+                alert(
+                    `Exported ${filename}\n\n` +
+                    `Original: ${(uncompressedData.length / 1024).toFixed(2)} KB\n` +
+                    `Compressed: ${(hologlyphData.length / 1024).toFixed(2)} KB\n` +
+                    `Savings: ${stats.savings}\n\n` +
+                    `Check your downloads folder!`
+                );
+            } else {
+                // Export uncompressed version
+                exportToFile(uncompressedData, filename, false);
+                const sizeKB = (uncompressedData.length / 1024).toFixed(2);
+                alert(`Exported ${filename} (${sizeKB} KB)!\nCheck your downloads folder.`);
+            }
+        });
+
+        // File drop and load functionality
+        const dropZone = document.getElementById('dropZone');
+        const dropOverlay = document.getElementById('dropOverlay');
+        const fileInput = document.getElementById('fileInput');
+
+        function loadGlyfFile(file) {
+            if (!file || !file.name.endsWith('.glyf')) {
+                alert('Please drop a .glyf file');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    console.log(`Loading ${file.name}: ${data.length} bytes (${(data.length / 1024).toFixed(2)} KB)`);
+                    
+                    // Destroy old player
+                    if (player) {
+                        player.destroy();
+                    }
+                    
+                    // Create new player with loaded file
+                    player = new HologlyphPlayer({
+                        canvas,
+                        data: data,
+                        autoPlay: true,
+                        voxelSize: 8,
+                        orbitalDrag: true,
+                        useWebGL: true
+                    });
+                    
+                    console.log(`Loaded ${file.name} successfully!`);
+                } catch (error) {
+                    console.error('Error loading file:', error);
+                    alert(`Error loading file: ${error.message}`);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // Drag and drop handlers
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropOverlay.classList.add('active');
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropOverlay.classList.remove('active');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropOverlay.classList.remove('active');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                loadGlyfFile(files[0]);
+            }
+        });
+
+        // Click to browse
+        dropZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                loadGlyfFile(e.target.files[0]);
+            }
+        });
+
+        // Voxel size slider
+        const voxelSlider = document.getElementById('voxelSlider');
+        const voxelValue = document.getElementById('voxelValue');
+        
+        voxelSlider.addEventListener('input', (e) => {
+            const newSize = parseInt(e.target.value);
+            voxelValue.textContent = newSize;
+            
+            // Recreate player with new voxel size
+            const wasPlaying = player._playing;
+            const currentFrame = player.currentFrame;
+            const viewRotationX = player.viewRotationX;
+            const viewRotationY = player.viewRotationY;
+            
+            player.destroy();
+            
+            // Reuse the same generated data
+            player = new HologlyphPlayer({
+                canvas,
+                data: hologlyphData,
+                autoPlay: false,
+                voxelSize: newSize,
+                orbitalDrag: true,
+                useWebGL: true
+            });
+            
+            player.viewRotationX = viewRotationX;
+            player.viewRotationY = viewRotationY;
+            player.currentFrame = currentFrame;
+            player.render();
+            
+            if (wasPlaying) {
+                player.play();
+            }
+        });
+    </script>
+</body>
+</html>
+

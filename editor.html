@@ -1,0 +1,1951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hologlyph Editor</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #1a1a2e;
+            height: 100vh;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        
+        .editor-layout {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+        
+        .sidebar {
+            display: flex;
+            background: #0f0f1e;
+            box-shadow: 2px 0 8px rgba(0,0,0,0.3);
+            z-index: 100;
+        }
+        
+        .toolbar {
+            width: 60px;
+            background: #0a0a14;
+            display: flex;
+            flex-direction: column;
+            padding: 10px 0;
+            gap: 5px;
+        }
+        
+        .tool-button {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: none;
+            color: #8b8b9e;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        
+        .tool-button span {
+            font-size: 9px;
+            margin-top: 2px;
+        }
+        
+        .tool-button:hover {
+            background: #1a1a2e;
+            color: #fff;
+        }
+        
+        .tool-button.active {
+            background: #667eea;
+            color: #fff;
+        }
+        
+        .tool-button.active::after {
+            content: '';
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 40px;
+            background: #fff;
+        }
+        
+        .panel-container {
+            width: 340px;
+            overflow-y: hidden;
+            overflow-x: hidden;
+            background: #0f0f1e;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .panel {
+            display: none;
+            flex-shrink: 0;
+            background: #0f0f1e;
+            border-bottom: 1px solid #2a2a3e;
+            overflow-y: auto;
+            overflow-x: hidden;
+            color: #fff;
+            min-height: 200px;
+            position: relative;
+        }
+        
+        .panel.active {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .panel-content {
+            padding: 1.5rem;
+            flex: 1;
+            overflow-y: auto;
+        }
+        
+        .panel-resize-handle {
+            height: 0;
+            background: #1a1a2e;
+            cursor: ns-resize;
+            border-top: 1px solid #2a2a3e;
+            border-bottom: 1px solid #2a2a3e;
+            transition: all 0.2s;
+            flex-shrink: 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .panel.active + .panel-resize-handle {
+            height: 8px;
+        }
+        
+        .panel-resize-handle::after {
+            content: '⋮';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%) rotate(90deg);
+            color: #4a5568;
+            font-size: 12px;
+            transition: color 0.2s;
+        }
+        
+        .panel-resize-handle:hover {
+            background: #667eea;
+        }
+        
+        .panel-resize-handle:hover::after {
+            color: #fff;
+        }
+        
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            background: #1a1a2e;
+            border-bottom: 1px solid #2a2a3e;
+            flex-shrink: 0;
+        }
+        
+        .panel-header h2 {
+            color: #fff;
+            font-size: 1.1rem;
+            margin: 0;
+            padding: 0;
+            border: none;
+        }
+        
+        .panel-close {
+            background: none;
+            border: none;
+            color: #8b8b9e;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s;
+        }
+        
+        .panel-close:hover {
+            color: #fff;
+        }
+        
+        .panel h2 {
+            color: #fff;
+            font-size: 1.3rem;
+            margin-bottom: 1.2rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #667eea;
+        }
+        
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .canvas-container {
+            flex: 1;
+            background: #1a1a2e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        canvas {
+            border: 2px solid #4a5568;
+            background: #0f0f1e;
+        }
+        
+        .bottom-panel {
+            background: #0f0f1e;
+            padding: 1rem 1.5rem;
+            border-top: 1px solid #2a2a3e;
+            color: #fff;
+        }
+        
+        .field label.label {
+            color: #ddd;
+            font-weight: 500;
+        }
+        
+        .label.is-small {
+            color: #bbb;
+            font-size: 0.8rem;
+        }
+        
+        .color-preview {
+            width: 100%;
+            height: 60px;
+            border-radius: 4px;
+            border: 2px solid #4a5568;
+            margin-top: 0.5rem;
+        }
+        
+        .input, .select select {
+            background: #1a1a2e;
+            border-color: #4a5568;
+            color: #fff;
+        }
+        
+        .input:focus, .select select:focus {
+            border-color: #667eea;
+        }
+        
+        .button {
+            font-weight: 600;
+        }
+        
+        .table {
+            background: transparent;
+            color: #ddd;
+        }
+        
+        .table td, .table th {
+            border-color: #2a2a3e;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #0a0a14;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #4a5568;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #667eea;
+        }
+
+        #savedProjectsList .box {
+            transition: all 0.2s;
+        }
+
+        #savedProjectsList .box:hover {
+            border-color: #667eea !important;
+        }
+
+        /* Slider Styles */
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #1a1a2e;
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+            cursor: pointer;
+            border: 1px solid #4a5568;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            transition: all 0.2s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: #7c8ef5;
+            transform: scale(1.1);
+        }
+
+        input[type="range"]::-webkit-slider-thumb:active {
+            background: #5568d3;
+            transform: scale(0.95);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            transition: all 0.2s;
+        }
+
+        input[type="range"]::-moz-range-thumb:hover {
+            background: #7c8ef5;
+            transform: scale(1.1);
+        }
+
+        input[type="range"]::-moz-range-thumb:active {
+            background: #5568d3;
+            transform: scale(0.95);
+        }
+
+        input[type="range"]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #1a1a2e;
+            border: 1px solid #4a5568;
+        }
+
+        input[type="range"]::-moz-range-track {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #1a1a2e;
+            border: 1px solid #4a5568;
+        }
+
+        input[type="range"]:focus {
+            outline: none;
+        }
+
+        input[type="range"]:focus::-webkit-slider-thumb {
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
+        }
+
+        input[type="range"]:focus::-moz-range-thumb {
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
+        }
+
+        /* Custom Slider Control Component */
+        .slider-control {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .slider-control-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .slider-control-label {
+            color: #ddd;
+            font-weight: 500;
+            font-size: 0.9rem;
+            margin: 0;
+        }
+
+        .slider-control-value {
+            background: #1a1a2e;
+            border: 1px solid #4a5568;
+            border-radius: 4px;
+            color: #fff;
+            padding: 4px 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            min-width: 50px;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .slider-control-value:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+        }
+
+        .slider-control-value:hover {
+            border-color: #667eea;
+        }
+
+        .slider-control-track {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        /* Remove spinner buttons from number inputs in slider controls */
+        .slider-control-value::-webkit-inner-spin-button,
+        .slider-control-value::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .slider-control-value {
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+    </style>
+</head>
+<body>
+    <div class="editor-layout">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <!-- Toolbar -->
+            <div class="toolbar">
+                <button class="tool-button active" data-panel="project">
+                    ⚙️<span>Project</span>
+                </button>
+                <button class="tool-button" data-panel="shape">
+                    📦<span>Shape</span>
+                </button>
+                <button class="tool-button" data-panel="color">
+                    🎨<span>Color</span>
+                </button>
+                <button class="tool-button" data-panel="voxel">
+                    ✏️<span>Voxel</span>
+                </button>
+                <button class="tool-button" data-panel="camera">
+                    📷<span>Camera</span>
+                </button>
+                <button class="tool-button" data-panel="stats">
+                    📊<span>Stats</span>
+                </button>
+                <button class="tool-button" data-panel="file">
+                    💾<span>File</span>
+                </button>
+            </div>
+            
+            <!-- Panels Container -->
+            <div class="panel-container">
+                <!-- Project Settings Panel -->
+                <div class="panel active" id="project-panel" style="height: 400px;">
+                    <div class="panel-header">
+                        <h2>Project Settings</h2>
+                        <button class="panel-close" data-panel="project">✕</button>
+                    </div>
+                    <div class="panel-content">
+                    
+                    <div class="field">
+                        <label class="label">Grid Size</label>
+                        <div class="columns is-mobile is-gapless">
+                            <div class="column">
+                                <label class="label is-small">Width</label>
+                                <input class="input is-small" type="number" id="gridWidth" value="16" min="1" max="32">
+                            </div>
+                            <div class="column ml-2">
+                                <label class="label is-small">Height</label>
+                                <input class="input is-small" type="number" id="gridHeight" value="16" min="1" max="32">
+                            </div>
+                            <div class="column ml-2">
+                                <label class="label is-small">Depth</label>
+                                <input class="input is-small" type="number" id="gridDepth" value="16" min="1" max="32">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="label">Frame Count</label>
+                        <input class="input" type="number" id="frameCount" value="1" min="1" max="100">
+                    </div>
+
+                    <div class="field">
+                        <label class="label">Frame Duration (ms)</label>
+                        <input class="input" type="number" id="frameDuration" value="100" min="10" max="5000">
+                    </div>
+
+                    <div class="field">
+                        <label class="checkbox">
+                            <input type="checkbox" id="loopAnimation" checked>
+                            Loop Animation
+                        </label>
+                    </div>
+
+                    <button class="button is-primary is-fullwidth" id="createProject">
+                        Create New Project
+                    </button>
+                    </div>
+                </div>
+                <div class="panel-resize-handle" data-panel="project"></div>
+
+                <!-- Shape Generator Panel -->
+                <div class="panel" id="shape-panel" style="height: 450px;">
+                    <div class="panel-header">
+                        <h2>Shape Generator</h2>
+                        <button class="panel-close" data-panel="shape">✕</button>
+                    </div>
+                    <div class="panel-content">
+                    
+                    <div class="field">
+                        <label class="label">Shape Type</label>
+                        <div class="select is-fullwidth">
+                            <select id="shapeType">
+                                <option value="cube">Cube</option>
+                                <option value="box">Rectangular Prism</option>
+                                <option value="sphere">Sphere</option>
+                                <option value="pyramid">Pyramid (Square Base)</option>
+                                <option value="cone">Cone</option>
+                                <option value="cylinder">Cylinder</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="label">Center Position (X, Y, Z)</label>
+                        <div class="columns is-mobile is-gapless">
+                            <div class="column">
+                                <input class="input is-small" type="number" id="shapePosX" value="8" min="0">
+                            </div>
+                            <div class="column ml-2">
+                                <input class="input is-small" type="number" id="shapePosY" value="8" min="0">
+                            </div>
+                            <div class="column ml-2">
+                                <input class="input is-small" type="number" id="shapePosZ" value="8" min="0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="label">Dimensions</label>
+                        <div class="columns is-mobile is-gapless">
+                            <div class="column">
+                                <label class="label is-small" id="shapeWidthLabel">Width</label>
+                                <input class="input is-small" type="number" id="shapeWidth" value="4" min="1">
+                            </div>
+                            <div class="column ml-2" id="shapeHeightContainer">
+                                <label class="label is-small">Height</label>
+                                <input class="input is-small" type="number" id="shapeHeight" value="4" min="1">
+                            </div>
+                            <div class="column ml-2" id="shapeDepthContainer">
+                                <label class="label is-small">Depth</label>
+                                <input class="input is-small" type="number" id="shapeDepth" value="4" min="1">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="checkbox">
+                            <input type="checkbox" id="shapeFilled" checked>
+                            Filled (uncheck for hollow)
+                        </label>
+                    </div>
+
+                    <button class="button is-primary is-fullwidth" id="generateShape">
+                        Generate Shape
+                    </button>
+                    </div>
+                </div>
+                <div class="panel-resize-handle" data-panel="shape"></div>
+
+                <!-- Color Picker Panel -->
+                <div class="panel active" id="color-panel" style="height: 550px;">
+                    <div class="panel-header">
+                        <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+                            <h2 style="margin: 0;">Color Picker</h2>
+                            <div class="color-preview" id="sharedColorPreview" style="width: 32px; height: 32px; margin: 0;"></div>
+                        </div>
+                        <button class="panel-close" data-panel="color">✕</button>
+                    </div>
+                    <div class="panel-content">
+                    
+                    <div class="field">
+                        <label class="label">Click to Pick Color</label>
+                        <canvas id="colorPickerCanvas" width="280" height="280" style="border: 2px solid #4a5568; border-radius: 4px; cursor: crosshair; display: block;"></canvas>
+                        <p class="help">Click anywhere to select hue & saturation</p>
+                    </div>
+
+                    <div class="field">
+                        <div class="columns is-mobile is-gapless">
+                            <div class="column mr-2">
+                                <div class="slider-control">
+                                    <div class="slider-control-header">
+                                        <label class="slider-control-label">Brightness</label>
+                                        <input class="slider-control-value" type="number" id="colorBrightValue" min="0" max="100" value="50">
+                                    </div>
+                                    <div class="slider-control-track">
+                                        <input type="range" id="colorBright" min="0" max="100" value="50">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="column">
+                                <div class="slider-control">
+                                    <div class="slider-control-header">
+                                        <label class="slider-control-label">Alpha</label>
+                                        <input class="slider-control-value" type="number" id="colorAlphaValue" min="0" max="100" value="100">
+                                    </div>
+                                    <div class="slider-control-track">
+                                        <input type="range" id="colorAlpha" min="0" max="100" value="100">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="label">Exact Values (optional)</label>
+                        <div class="columns is-mobile is-gapless">
+                            <div class="column mr-1">
+                                <label class="label is-small">Hue</label>
+                                <input class="input is-small" type="number" id="colorHue" min="0" max="255" value="128">
+                            </div>
+                            <div class="column mr-1">
+                                <label class="label is-small">Saturation</label>
+                                <input class="input is-small" type="number" id="colorSat" min="0" max="100" value="100">
+                            </div>
+                        </div>
+                    </div>
+
+                    </div>
+                </div>
+                <div class="panel-resize-handle" data-panel="color"></div>
+
+                <!-- Voxel Editor Panel -->
+                <div class="panel" id="voxel-panel" style="height: 450px;">
+                    <div class="panel-header">
+                        <h2>Voxel Editor</h2>
+                        <button class="panel-close" data-panel="voxel">✕</button>
+                    </div>
+                    <div class="panel-content">
+                    
+                    <div class="field">
+                        <label class="label">Position</label>
+                        
+                        <label class="label is-small">X</label>
+                        <input class="slider is-fullwidth is-small" type="range" id="voxelXSlider" min="0" max="15" value="0">
+                        <input class="input is-small mt-1" type="number" id="voxelX" value="0" min="0">
+                        
+                        <label class="label is-small mt-3">Y</label>
+                        <input class="slider is-fullwidth is-small" type="range" id="voxelYSlider" min="0" max="15" value="0">
+                        <input class="input is-small mt-1" type="number" id="voxelY" value="0" min="0">
+                        
+                        <label class="label is-small mt-3">Z</label>
+                        <input class="slider is-fullwidth is-small" type="range" id="voxelZSlider" min="0" max="15" value="0">
+                        <input class="input is-small mt-1" type="number" id="voxelZ" value="0" min="0">
+                    </div>
+
+                    <button class="button is-success is-fullwidth mt-4" id="setVoxel">
+                        Set Voxel
+                    </button>
+                    
+                    <button class="button is-warning is-fullwidth mt-2" id="clearVoxel">
+                        Clear Voxel
+                    </button>
+                    </div>
+                </div>
+                <div class="panel-resize-handle" data-panel="voxel"></div>
+
+                <!-- Camera Panel -->
+                <div class="panel" id="camera-panel" style="height: 350px;">
+                    <div class="panel-header">
+                        <h2>Camera View</h2>
+                        <button class="panel-close" data-panel="camera">✕</button>
+                    </div>
+                    <div class="panel-content">
+                    
+                    <div class="field">
+                        <label class="label">Rotation X (Vertical)</label>
+                        <input class="input" type="number" id="cameraRotX" value="0.3" step="0.1" min="-1.57" max="1.57">
+                    </div>
+                    
+                    <div class="field">
+                        <label class="label">Rotation Y (Horizontal)</label>
+                        <input class="input" type="number" id="cameraRotY" value="0.6" step="0.1">
+                    </div>
+
+                    <div class="field">
+                        <div class="slider-control">
+                            <div class="slider-control-header">
+                                <label class="slider-control-label">Zoom Level</label>
+                                <input class="slider-control-value" type="number" id="cameraZoomValue" min="0.3" max="3" value="1" step="0.1">
+                            </div>
+                            <div class="slider-control-track">
+                                <input type="range" id="cameraZoom" min="0.3" max="3" value="1" step="0.1">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button class="button is-info is-fullwidth" id="resetCamera">Reset Camera</button>
+                    
+                    <p class="help mt-2">💡 Use mouse wheel or pinch to zoom</p>
+                    </div>
+                </div>
+                <div class="panel-resize-handle" data-panel="camera"></div>
+
+                <!-- Statistics Panel -->
+                <div class="panel" id="stats-panel" style="height: 250px;">
+                    <div class="panel-header">
+                        <h2>Statistics</h2>
+                        <button class="panel-close" data-panel="stats">✕</button>
+                    </div>
+                    <div class="panel-content">
+                    
+                    <table class="table is-fullwidth is-size-7">
+                        <tbody>
+                            <tr>
+                                <td><strong>Current Frame:</strong></td>
+                                <td id="statsCurrentFrame">-</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Voxels Set:</strong></td>
+                                <td id="statsVoxelCount">0</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Frame Size:</strong></td>
+                                <td id="statsFrameSize">0 bytes</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Total Size:</strong></td>
+                                <td id="statsTotalSize">0 bytes</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    </div>
+                </div>
+                <div class="panel-resize-handle" data-panel="stats"></div>
+
+                <!-- File Operations Panel -->
+                <div class="panel" id="file-panel" style="height: 500px;">
+                    <div class="panel-header">
+                        <h2>File Operations</h2>
+                        <button class="panel-close" data-panel="file">✕</button>
+                    </div>
+                    <div class="panel-content">
+                    
+                    <div class="field">
+                        <label class="label">Project Name</label>
+                        <input class="input" type="text" id="projectName" placeholder="My Project" value="Untitled">
+                    </div>
+
+                    <div class="buttons">
+                        <button class="button is-success is-fullwidth" id="saveProject">
+                            💾 Save Project
+                        </button>
+                    </div>
+
+                    <div class="field">
+                        <label class="checkbox">
+                            <input type="checkbox" id="autoSaveEnabled" checked>
+                            Auto-save every 
+                            <input class="input is-small" type="number" id="autoSaveInterval" value="30" min="10" max="300" style="width: 70px; display: inline-block; margin: 0 0.25rem;"> 
+                            seconds
+                        </label>
+                        <p class="help mt-2">Last saved: <span id="lastSaveTime">Never</span></p>
+                    </div>
+
+                    <hr style="background: #2a2a3e; margin: 1rem 0;">
+
+                    <div class="field">
+                        <label class="label">Saved Projects</label>
+                        <div id="savedProjectsList" style="max-height: 200px; overflow-y: auto;">
+                            <p class="help">No saved projects</p>
+                        </div>
+                    </div>
+
+                    <hr style="background: #2a2a3e; margin: 1rem 0;">
+                    
+                    <div class="field">
+                        <label class="checkbox">
+                            <input type="checkbox" id="exportCompress" checked>
+                            Compress with RLE (reduces file size)
+                        </label>
+                    </div>
+                    
+                    <button class="button is-info is-fullwidth mb-2" id="exportFile">
+                        📤 Export .glyf File
+                    </button>
+                    
+                    <div class="file is-fullwidth">
+                        <label class="file-label">
+                            <input class="file-input" type="file" id="importFile" accept=".glyf">
+                            <span class="file-cta is-fullwidth">
+                                <span class="file-icon">📁</span>
+                                <span class="file-label">Import .glyf File</span>
+                            </span>
+                        </label>
+                    </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="canvas-container">
+                <canvas id="previewCanvas" width="800" height="800"></canvas>
+            </div>
+            
+            <div class="bottom-panel">
+                <div class="level">
+                    <div class="level-left">
+                        <div class="level-item">
+                            <strong>Frame: </strong>
+                            <input class="input is-small ml-2" style="width: 70px;" type="number" id="currentFrameInput" min="1" value="1">
+                            <strong class="ml-2">/ <span id="totalFramesDisplay">1</span></strong>
+                        </div>
+                    </div>
+                    <div class="level-right">
+                        <div class="level-item">
+                            <div class="buttons">
+                                <button class="button is-small is-success" id="playBtn">▶</button>
+                                <button class="button is-small is-warning" id="pauseBtn">⏸</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <input class="" id="frameSlider" type="range" min="0" max="0" value="0">
+                
+                <div class="buttons is-centered mt-3">
+                    <button class="button is-small" id="prevFrame">← Previous</button>
+                    <button class="button is-small" id="nextFrame">Next →</button>
+                    <button class="button is-small is-info" id="duplicateFrame">Duplicate Frame</button>
+                    <button class="button is-small is-danger" id="deleteFrame">Delete Frame</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { createHologlyphHeader, HSBAUtil, HologlyphPlayer, parseHologlyphHeader, compressGlyfFile, getCompressionStats, decompressGlyfFile } from './hologlyph.js';
+
+        // Panel toggling
+        document.querySelectorAll('.tool-button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const panelId = btn.dataset.panel + '-panel';
+                const panel = document.getElementById(panelId);
+                
+                // Toggle panel
+                if (panel.classList.contains('active')) {
+                    panel.classList.remove('active');
+                    btn.classList.remove('active');
+                } else {
+                    panel.classList.add('active');
+                    btn.classList.add('active');
+                }
+            });
+        });
+
+        // Panel close buttons
+        document.querySelectorAll('.panel-close').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const panelId = btn.dataset.panel + '-panel';
+                const panel = document.getElementById(panelId);
+                const toolButton = document.querySelector(`.tool-button[data-panel="${btn.dataset.panel}"]`);
+                
+                panel.classList.remove('active');
+                toolButton.classList.remove('active');
+            });
+        });
+
+        // Panel resizing constants
+        const MIN_PANEL_HEIGHT = 200;
+        const DEFAULT_PANEL_HEIGHTS = {
+            'project': 400,
+            'shape': 450,
+            'color': 350,
+            'voxel': 450,
+            'camera': 250,
+            'stats': 250,
+            'file': 200
+        };
+        
+        document.querySelectorAll('.panel-resize-handle').forEach(handle => {
+            let isResizing = false;
+            let currentPanel = null;
+            let startY = 0;
+            let startHeight = 0;
+            
+            handle.addEventListener('mousedown', (e) => {
+                const panelId = handle.dataset.panel + '-panel';
+                currentPanel = document.getElementById(panelId);
+                
+                if (!currentPanel.classList.contains('active')) return;
+                
+                isResizing = true;
+                startY = e.clientY;
+                startHeight = currentPanel.offsetHeight;
+                
+                e.preventDefault();
+                document.body.style.cursor = 'ns-resize';
+            });
+            
+            document.addEventListener('mousemove', (e) => {
+                if (!isResizing || !currentPanel) return;
+                
+                const deltaY = e.clientY - startY;
+                const newHeight = Math.max(MIN_PANEL_HEIGHT, startHeight + deltaY);
+                currentPanel.style.height = newHeight + 'px';
+            });
+            
+            document.addEventListener('mouseup', () => {
+                if (isResizing) {
+                    isResizing = false;
+                    currentPanel = null;
+                    document.body.style.cursor = '';
+                }
+            });
+        });
+
+        // Editor state
+        let editorState = {
+            width: 16,
+            height: 16,
+            depth: 16,
+            frameCount: 1,
+            frameDurationMs: 100,
+            loop: true,
+            currentFrame: 0,
+            voxelData: null,
+            projectName: 'Untitled',
+            lastSaved: null,
+        };
+
+        let player = null;
+        let autoSaveInterval = null;
+
+        // LocalStorage keys
+        const STORAGE_KEYS = {
+            PROJECTS: 'hologlyph_projects',
+            CURRENT_PROJECT: 'hologlyph_current_project',
+            SETTINGS: 'hologlyph_settings'
+        };
+
+        // Load user settings
+        function loadSettings() {
+            const settings = JSON.parse(localStorage.getItem(STORAGE_KEYS.SETTINGS) || '{}');
+            return {
+                autoSaveEnabled: settings.autoSaveEnabled !== false,
+                autoSaveInterval: settings.autoSaveInterval || 30
+            };
+        }
+
+        // Save user settings
+        function saveSettings() {
+            const settings = {
+                autoSaveEnabled: document.getElementById('autoSaveEnabled').checked,
+                autoSaveInterval: parseInt(document.getElementById('autoSaveInterval').value)
+            };
+            localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+            setupAutoSave();
+        }
+
+        // Get all saved projects
+        function getSavedProjects() {
+            return JSON.parse(localStorage.getItem(STORAGE_KEYS.PROJECTS) || '{}');
+        }
+
+        // Save project to localStorage
+        function saveProject(projectName = null) {
+            if (!projectName) {
+                projectName = document.getElementById('projectName').value || 'Untitled';
+            }
+
+            const projects = getSavedProjects();
+            const projectData = {
+                name: projectName,
+                width: editorState.width,
+                height: editorState.height,
+                depth: editorState.depth,
+                frameCount: editorState.frameCount,
+                frameDurationMs: editorState.frameDurationMs,
+                loop: editorState.loop,
+                currentFrame: editorState.currentFrame,
+                voxelData: editorState.voxelData,
+                lastSaved: new Date().toISOString()
+            };
+
+            projects[projectName] = projectData;
+            localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
+            localStorage.setItem(STORAGE_KEYS.CURRENT_PROJECT, projectName);
+
+            editorState.projectName = projectName;
+            editorState.lastSaved = projectData.lastSaved;
+            
+            updateLastSaveTime();
+            updateSavedProjectsList();
+            
+            return true;
+        }
+
+        // Load project from localStorage
+        function loadProject(projectName) {
+            const projects = getSavedProjects();
+            const projectData = projects[projectName];
+
+            if (!projectData) {
+                alert('Project not found');
+                return false;
+            }
+
+            // Restore editor state
+            editorState.width = projectData.width;
+            editorState.height = projectData.height;
+            editorState.depth = projectData.depth;
+            editorState.frameCount = projectData.frameCount;
+            editorState.frameDurationMs = projectData.frameDurationMs;
+            editorState.loop = projectData.loop;
+            editorState.currentFrame = projectData.currentFrame;
+            editorState.voxelData = projectData.voxelData;
+            editorState.projectName = projectData.name;
+            editorState.lastSaved = projectData.lastSaved;
+
+            // Update UI
+            document.getElementById('gridWidth').value = projectData.width;
+            document.getElementById('gridHeight').value = projectData.height;
+            document.getElementById('gridDepth').value = projectData.depth;
+            document.getElementById('frameCount').value = projectData.frameCount;
+            document.getElementById('frameDuration').value = projectData.frameDurationMs;
+            document.getElementById('loopAnimation').checked = projectData.loop;
+            document.getElementById('projectName').value = projectData.name;
+
+            localStorage.setItem(STORAGE_KEYS.CURRENT_PROJECT, projectName);
+
+            updateFrameUI();
+            updatePreview();
+            updateLastSaveTime();
+
+            return true;
+        }
+
+        // Delete project from localStorage
+        function deleteProject(projectName) {
+            if (!confirm(`Delete project "${projectName}"?`)) return;
+
+            const projects = getSavedProjects();
+            delete projects[projectName];
+            localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
+
+            if (localStorage.getItem(STORAGE_KEYS.CURRENT_PROJECT) === projectName) {
+                localStorage.removeItem(STORAGE_KEYS.CURRENT_PROJECT);
+            }
+
+            updateSavedProjectsList();
+        }
+
+        // Update saved projects list UI
+        function updateSavedProjectsList() {
+            const projects = getSavedProjects();
+            const container = document.getElementById('savedProjectsList');
+            const projectNames = Object.keys(projects);
+
+            if (projectNames.length === 0) {
+                container.innerHTML = '<p class="help">No saved projects</p>';
+                return;
+            }
+
+            container.innerHTML = projectNames.map(name => {
+                const project = projects[name];
+                const date = new Date(project.lastSaved);
+                const dateStr = date.toLocaleString();
+                const isCurrent = name === editorState.projectName;
+
+                return `
+                    <div class="box" style="background: ${isCurrent ? '#1a1a2e' : '#0f0f1e'}; padding: 0.75rem; margin-bottom: 0.5rem; border: ${isCurrent ? '1px solid #667eea' : '1px solid #2a2a3e'};">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="flex: 1;">
+                                <strong style="color: ${isCurrent ? '#667eea' : '#fff'};">${name}</strong>
+                                <br>
+                                <small style="color: #8b8b9e;">${dateStr}</small>
+                                <br>
+                                <small style="color: #8b8b9e;">${project.width}×${project.height}×${project.depth}, ${project.frameCount} frames</small>
+                            </div>
+                            <div>
+                                <button class="button is-small is-info" onclick="loadProjectByName('${name}')">Load</button>
+                                <button class="button is-small is-danger ml-1" onclick="deleteProjectByName('${name}')">✕</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Update last save time display
+        function updateLastSaveTime() {
+            const timeSpan = document.getElementById('lastSaveTime');
+            if (editorState.lastSaved) {
+                const date = new Date(editorState.lastSaved);
+                timeSpan.textContent = date.toLocaleString();
+            } else {
+                timeSpan.textContent = 'Never';
+            }
+        }
+
+        // Setup auto-save
+        function setupAutoSave() {
+            if (autoSaveInterval) {
+                clearInterval(autoSaveInterval);
+                autoSaveInterval = null;
+            }
+
+            const enabled = document.getElementById('autoSaveEnabled').checked;
+            const interval = parseInt(document.getElementById('autoSaveInterval').value) * 1000;
+
+            if (enabled) {
+                autoSaveInterval = setInterval(() => {
+                    saveProject();
+                    console.log('Auto-saved project');
+                }, interval);
+            }
+        }
+
+        // Global functions for onclick handlers
+        window.loadProjectByName = (name) => loadProject(name);
+        window.deleteProjectByName = (name) => deleteProject(name);
+
+        // Try to load last project on startup
+        function loadLastProject() {
+            const lastProjectName = localStorage.getItem(STORAGE_KEYS.CURRENT_PROJECT);
+            if (lastProjectName) {
+                const projects = getSavedProjects();
+                if (projects[lastProjectName]) {
+                    loadProject(lastProjectName);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Initialize editor
+        function initEditor() {
+            const width = parseInt(document.getElementById('gridWidth').value);
+            const height = parseInt(document.getElementById('gridHeight').value);
+            const depth = parseInt(document.getElementById('gridDepth').value);
+            const frameCount = parseInt(document.getElementById('frameCount').value);
+            const frameDurationMs = parseInt(document.getElementById('frameDuration').value);
+            const loop = document.getElementById('loopAnimation').checked;
+
+            editorState.width = width;
+            editorState.height = height;
+            editorState.depth = depth;
+            editorState.frameCount = frameCount;
+            editorState.frameDurationMs = frameDurationMs;
+            editorState.loop = loop;
+            editorState.currentFrame = 0;
+            editorState.projectName = 'Untitled';
+            editorState.lastSaved = null;
+
+            // Initialize voxel data array
+            editorState.voxelData = [];
+            for (let f = 0; f < frameCount; f++) {
+                const frame = [];
+                for (let z = 0; z < depth; z++) {
+                    const plane = [];
+                    for (let y = 0; y < height; y++) {
+                        const row = [];
+                        for (let x = 0; x < width; x++) {
+                            row.push({ h: 0, s: 0, b: 0, a: 0 });
+                        }
+                        plane.push(row);
+                    }
+                    frame.push(plane);
+                }
+                editorState.voxelData.push(frame);
+            }
+
+            updateFrameUI();
+            updatePreview();
+        }
+
+        // Generate hologlyph data from editor state
+        function generateHologlyphData() {
+            const header = createHologlyphHeader({
+                width: editorState.width,
+                height: editorState.height,
+                depth: editorState.depth,
+                frameCount: editorState.frameCount,
+                frameDurationMs: editorState.frameDurationMs,
+                loop: editorState.loop,
+                loopStartFrame: 0,
+                bytesPerVoxel: 4,
+            });
+
+            const voxelsPerFrame = editorState.width * editorState.height * editorState.depth;
+            const bytesPerFrame = voxelsPerFrame * 4;
+            const totalSize = header.length + (bytesPerFrame * editorState.frameCount);
+            const buffer = new Uint8Array(totalSize);
+
+            buffer.set(header, 0);
+
+            let offset = header.length;
+            for (let f = 0; f < editorState.frameCount; f++) {
+                for (let z = 0; z < editorState.depth; z++) {
+                    for (let y = 0; y < editorState.height; y++) {
+                        for (let x = 0; x < editorState.width; x++) {
+                            const voxel = editorState.voxelData[f][z][y][x];
+                            const pixel = HSBAUtil.encodePixel(voxel);
+                            buffer.set(pixel, offset);
+                            offset += 4;
+                        }
+                    }
+                }
+            }
+
+            return buffer;
+        }
+
+        // Update preview
+        function updatePreview() {
+            const canvas = document.getElementById('previewCanvas');
+            const data = generateHologlyphData();
+
+            // Preserve camera rotation and zoom
+            const rotX = player ? player.viewRotationX : 0.3;
+            const rotY = player ? player.viewRotationY : 0.6;
+            const zoom = player ? player.zoomLevel : 1.0;
+
+            if (player) {
+                player.destroy();
+            }
+
+            player = new HologlyphPlayer({
+                canvas,
+                data,
+                autoPlay: false,
+                voxelSize: 8,
+                orbitalDrag: true,
+                useWebGL: true,
+                showGrid: true,
+                initialRotationX: rotX,
+                initialRotationY: rotY
+            });
+
+            player.zoomLevel = zoom;
+            player.currentFrame = editorState.currentFrame;
+            player.render();
+        }
+
+        // Update frame UI
+        function updateFrameUI() {
+            document.getElementById('currentFrameInput').value = editorState.currentFrame + 1;
+            document.getElementById('currentFrameInput').max = editorState.frameCount;
+            document.getElementById('totalFramesDisplay').textContent = editorState.frameCount;
+            document.getElementById('frameSlider').max = editorState.frameCount - 1;
+            document.getElementById('frameSlider').value = editorState.currentFrame;
+            
+            // Update voxel editor bounds
+            document.getElementById('voxelX').max = editorState.width - 1;
+            document.getElementById('voxelY').max = editorState.height - 1;
+            document.getElementById('voxelZ').max = editorState.depth - 1;
+            document.getElementById('voxelXSlider').max = editorState.width - 1;
+            document.getElementById('voxelYSlider').max = editorState.height - 1;
+            document.getElementById('voxelZSlider').max = editorState.depth - 1;
+            
+            // Update shape position bounds
+            document.getElementById('shapePosX').max = editorState.width - 1;
+            document.getElementById('shapePosY').max = editorState.height - 1;
+            document.getElementById('shapePosZ').max = editorState.depth - 1;
+            
+            // Set default shape position to center
+            document.getElementById('shapePosX').value = Math.floor(editorState.width / 2);
+            document.getElementById('shapePosY').value = Math.floor(editorState.height / 2);
+            document.getElementById('shapePosZ').value = Math.floor(editorState.depth / 2);
+            
+            updateStats();
+        }
+
+        // Update statistics display
+        function updateStats() {
+            // Count non-empty voxels in current frame
+            let currentFrameCount = 0;
+            for (let z = 0; z < editorState.depth; z++) {
+                for (let y = 0; y < editorState.height; y++) {
+                    for (let x = 0; x < editorState.width; x++) {
+                        const v = editorState.voxelData[editorState.currentFrame][z][y][x];
+                        if (v.a > 0 && v.b > 0) currentFrameCount++;
+                    }
+                }
+            }
+            
+            // Count total non-empty voxels across all frames
+            let totalVoxelCount = 0;
+            for (let f = 0; f < editorState.frameCount; f++) {
+                for (let z = 0; z < editorState.depth; z++) {
+                    for (let y = 0; y < editorState.height; y++) {
+                        for (let x = 0; x < editorState.width; x++) {
+                            const v = editorState.voxelData[f][z][y][x];
+                            if (v.a > 0 && v.b > 0) totalVoxelCount++;
+                        }
+                    }
+                }
+            }
+            
+            // Calculate sizes
+            const voxelsPerFrame = editorState.width * editorState.height * editorState.depth;
+            const frameSize = voxelsPerFrame * 4;
+            const headerSize = 28;
+            const totalSize = headerSize + (frameSize * editorState.frameCount);
+            
+            // Format sizes
+            function formatBytes(bytes) {
+                if (bytes < 1024) return bytes + ' B';
+                if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+                return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+            }
+            
+            // Update display
+            document.getElementById('statsCurrentFrame').textContent = 
+                `${editorState.currentFrame + 1} / ${editorState.frameCount}`;
+            document.getElementById('statsVoxelCount').textContent = 
+                `${currentFrameCount} / ${voxelsPerFrame} (${((currentFrameCount / voxelsPerFrame) * 100).toFixed(1)}%)`;
+            document.getElementById('statsFrameSize').textContent = formatBytes(frameSize);
+            document.getElementById('statsTotalSize').textContent = 
+                `${formatBytes(totalSize)} (${totalVoxelCount} voxels set)`;
+        }
+
+        // Initialize interactive color picker canvas
+        function initColorPicker() {
+            const canvas = document.getElementById('colorPickerCanvas');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+
+            function drawColorGradient() {
+                // Draw hue/saturation gradient
+                for (let y = 0; y < height; y++) {
+                    const saturation = 100 - (y / height) * 100;
+                    
+                    for (let x = 0; x < width; x++) {
+                        const hue = (x / width) * 360;
+                        ctx.fillStyle = `hsl(${hue}, ${saturation}%, 50%)`;
+                        ctx.fillRect(x, y, 1, 1);
+                    }
+                }
+            }
+
+            function drawIndicator() {
+                const h = parseInt(document.getElementById('colorHue').value);
+                const s = parseInt(document.getElementById('colorSat').value);
+
+                const x = (h / 255) * width;
+                const y = ((100 - s) / 100) * height;
+
+                // Draw circle indicator
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 3;
+                ctx.shadowColor = 'black';
+                ctx.shadowBlur = 4;
+                
+                ctx.beginPath();
+                ctx.arc(x, y, 8, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+
+            function redrawPicker(showCrosshair = false, mouseX = 0, mouseY = 0) {
+                drawColorGradient();
+                
+                if (showCrosshair) {
+                    // Draw hover crosshair
+                    ctx.strokeStyle = 'white';
+                    ctx.lineWidth = 2;
+                    ctx.shadowColor = 'black';
+                    ctx.shadowBlur = 3;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(mouseX - 10, mouseY);
+                    ctx.lineTo(mouseX + 10, mouseY);
+                    ctx.moveTo(mouseX, mouseY - 10);
+                    ctx.lineTo(mouseX, mouseY + 10);
+                    ctx.stroke();
+                    
+                    ctx.shadowBlur = 0;
+                } else {
+                    // Draw current color indicator
+                    drawIndicator();
+                }
+            }
+
+            // Initial draw
+            redrawPicker();
+
+            // Handle clicks on color picker
+            canvas.addEventListener('click', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                // Convert position to hue and saturation
+                const hue = Math.round((x / width) * 255);
+                const saturation = Math.round(100 - (y / height) * 100);
+
+                // Update inputs
+                document.getElementById('colorHue').value = hue;
+                document.getElementById('colorSat').value = saturation;
+
+                updateColorPreview();
+                redrawPicker();
+            });
+
+            // Show crosshair on hover
+            canvas.addEventListener('mousemove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                redrawPicker(true, x, y);
+            });
+
+            canvas.addEventListener('mouseleave', () => {
+                redrawPicker();
+            });
+
+            // Store for updates
+            window.updateColorPickerIndicator = () => redrawPicker();
+        }
+
+        // Update shared color preview
+        function updateColorPreview() {
+            const h = parseInt(document.getElementById('colorHue').value);
+            const s = parseInt(document.getElementById('colorSat').value);
+            const b = parseInt(document.getElementById('colorBright').value);
+            const a = parseInt(document.getElementById('colorAlpha').value);
+
+            // Convert to CSS color
+            const hDeg = (h / 255) * 360;
+            const preview = document.getElementById('sharedColorPreview');
+            preview.style.backgroundColor = `hsla(${hDeg}, ${s}%, ${b}%, ${a / 100})`;
+            
+            // Update color picker indicator
+            if (window.updateColorPickerIndicator) {
+                window.updateColorPickerIndicator();
+            }
+        }
+
+        // Get current color from shared picker
+        function getCurrentColor() {
+            return {
+                h: parseInt(document.getElementById('colorHue').value),
+                s: parseInt(document.getElementById('colorSat').value),
+                b: parseInt(document.getElementById('colorBright').value),
+                a: parseInt(document.getElementById('colorAlpha').value)
+            };
+        }
+
+        // Set voxel
+        function setVoxel() {
+            const x = parseInt(document.getElementById('voxelX').value);
+            const y = parseInt(document.getElementById('voxelY').value);
+            const z = parseInt(document.getElementById('voxelZ').value);
+            const color = getCurrentColor();
+
+            if (x >= 0 && x < editorState.width &&
+                y >= 0 && y < editorState.height &&
+                z >= 0 && z < editorState.depth) {
+                editorState.voxelData[editorState.currentFrame][z][y][x] = color;
+                updateStats();
+                updatePreview();
+            }
+        }
+
+        // Clear voxel
+        function clearVoxel() {
+            const x = parseInt(document.getElementById('voxelX').value);
+            const y = parseInt(document.getElementById('voxelY').value);
+            const z = parseInt(document.getElementById('voxelZ').value);
+
+            if (x >= 0 && x < editorState.width &&
+                y >= 0 && y < editorState.height &&
+                z >= 0 && z < editorState.depth) {
+                editorState.voxelData[editorState.currentFrame][z][y][x] = { h: 0, s: 0, b: 0, a: 0 };
+                updateStats();
+                updatePreview();
+            }
+        }
+
+        // Shape generation helpers
+        function generateShape() {
+            const shapeType = document.getElementById('shapeType').value;
+            const width = parseInt(document.getElementById('shapeWidth').value);
+            const height = parseInt(document.getElementById('shapeHeight').value);
+            const depth = parseInt(document.getElementById('shapeDepth').value);
+            const filled = document.getElementById('shapeFilled').checked;
+            const color = getCurrentColor();
+
+            const centerX = parseInt(document.getElementById('shapePosX').value);
+            const centerY = parseInt(document.getElementById('shapePosY').value);
+            const centerZ = parseInt(document.getElementById('shapePosZ').value);
+
+            switch (shapeType) {
+                case 'cube':
+                    generateCube(centerX, centerY, centerZ, width, filled, color);
+                    break;
+                case 'box':
+                    generateBox(centerX, centerY, centerZ, width, height, depth, filled, color);
+                    break;
+                case 'sphere':
+                    generateSphere(centerX, centerY, centerZ, width, filled, color);
+                    break;
+                case 'pyramid':
+                    generatePyramid(centerX, centerY, centerZ, width, height, filled, color);
+                    break;
+                case 'cone':
+                    generateCone(centerX, centerY, centerZ, width, height, filled, color);
+                    break;
+                case 'cylinder':
+                    generateCylinder(centerX, centerY, centerZ, width, height, filled, color);
+                    break;
+            }
+
+            updateStats();
+            updatePreview();
+        }
+
+        function generateCube(cx, cy, cz, size, filled, color) {
+            const halfSize = Math.floor(size / 2);
+            for (let z = -halfSize; z < halfSize; z++) {
+                for (let y = -halfSize; y < halfSize; y++) {
+                    for (let x = -halfSize; x < halfSize; x++) {
+                        if (filled || Math.abs(x) === halfSize - 1 || Math.abs(y) === halfSize - 1 || Math.abs(z) === halfSize - 1) {
+                            setVoxelAt(cx + x, cy + y, cz + z, color);
+                        }
+                    }
+                }
+            }
+        }
+
+        function generateBox(cx, cy, cz, w, h, d, filled, color) {
+            const halfW = Math.floor(w / 2);
+            const halfH = Math.floor(h / 2);
+            const halfD = Math.floor(d / 2);
+            for (let z = -halfD; z < halfD; z++) {
+                for (let y = -halfH; y < halfH; y++) {
+                    for (let x = -halfW; x < halfW; x++) {
+                        if (filled || Math.abs(x) === halfW - 1 || Math.abs(y) === halfH - 1 || Math.abs(z) === halfD - 1) {
+                            setVoxelAt(cx + x, cy + y, cz + z, color);
+                        }
+                    }
+                }
+            }
+        }
+
+        function generateSphere(cx, cy, cz, radius, filled, color) {
+            const r = radius / 2;
+            for (let z = -radius; z <= radius; z++) {
+                for (let y = -radius; y <= radius; y++) {
+                    for (let x = -radius; x <= radius; x++) {
+                        const dist = Math.sqrt(x * x + y * y + z * z);
+                        if (filled ? dist <= r : (dist <= r && dist >= r - 1)) {
+                            setVoxelAt(cx + x, cy + y, cz + z, color);
+                        }
+                    }
+                }
+            }
+        }
+
+        function generatePyramid(cx, cy, cz, baseSize, height, filled, color) {
+            const halfBase = Math.floor(baseSize / 2);
+            for (let y = 0; y < height; y++) {
+                const levelSize = halfBase * (1 - y / height);
+                for (let z = -levelSize; z <= levelSize; z++) {
+                    for (let x = -levelSize; x <= levelSize; x++) {
+                        if (filled || Math.abs(x) >= levelSize - 0.5 || Math.abs(z) >= levelSize - 0.5 || y === 0) {
+                            setVoxelAt(cx + Math.round(x), cy - halfBase + y, cz + Math.round(z), color);
+                        }
+                    }
+                }
+            }
+        }
+
+        function generateCone(cx, cy, cz, radius, height, filled, color) {
+            const r = radius / 2;
+            for (let y = 0; y < height; y++) {
+                const levelRadius = r * (1 - y / height);
+                for (let z = -radius; z <= radius; z++) {
+                    for (let x = -radius; x <= radius; x++) {
+                        const dist = Math.sqrt(x * x + z * z);
+                        if (filled ? dist <= levelRadius : (dist <= levelRadius && dist >= levelRadius - 1)) {
+                            setVoxelAt(cx + x, cy - Math.floor(r) + y, cz + z, color);
+                        }
+                    }
+                }
+            }
+        }
+
+        function generateCylinder(cx, cy, cz, radius, height, filled, color) {
+            const r = radius / 2;
+            const halfH = Math.floor(height / 2);
+            for (let y = -halfH; y < halfH; y++) {
+                for (let z = -radius; z <= radius; z++) {
+                    for (let x = -radius; x <= radius; x++) {
+                        const dist = Math.sqrt(x * x + z * z);
+                        if (filled ? dist <= r : (dist <= r && dist >= r - 1) || Math.abs(y) === halfH - 1) {
+                            setVoxelAt(cx + x, cy + y, cz + z, color);
+                        }
+                    }
+                }
+            }
+        }
+
+        function setVoxelAt(x, y, z, color) {
+            if (x >= 0 && x < editorState.width &&
+                y >= 0 && y < editorState.height &&
+                z >= 0 && z < editorState.depth) {
+                editorState.voxelData[editorState.currentFrame][z][y][x] = color;
+            }
+        }
+
+        // Export file
+        function exportFile() {
+            let data = generateHologlyphData();
+            const compress = document.getElementById('exportCompress').checked;
+            
+            if (compress) {
+                const original = data.length;
+                data = compressGlyfFile(data);
+                const stats = getCompressionStats(new Uint8Array(original), data);
+                console.log(`Compression: ${(original/1024).toFixed(2)} KB → ${(data.length/1024).toFixed(2)} KB (${stats.savings} savings)`);
+            }
+            
+            const blob = new Blob([data], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const projectName = document.getElementById('projectName').value || 'Untitled';
+            const suffix = compress ? '_compressed' : '';
+            a.download = projectName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + suffix + '.glyf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            if (compress) {
+                alert('Exported compressed file! File size reduced. The player will automatically decompress it when loading.');
+            }
+        }
+
+        // Import file
+        function importFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                let data = new Uint8Array(e.target.result);
+                let header = parseHologlyphHeader(data);
+                
+                // Auto-decompress if compressed
+                if (header.compressionType !== 0) {
+                    console.log('Decompressing imported file...');
+                    data = decompressGlyfFile(data);
+                    header = parseHologlyphHeader(data);
+                    console.log('Decompressed successfully');
+                }
+
+                editorState.width = header.width;
+                editorState.height = header.height;
+                editorState.depth = header.depth;
+                editorState.frameCount = header.frameCount;
+                editorState.frameDurationMs = header.frameDurationMs;
+                editorState.loop = header.loop;
+                editorState.currentFrame = 0;
+
+                // Update UI
+                document.getElementById('gridWidth').value = header.width;
+                document.getElementById('gridHeight').value = header.height;
+                document.getElementById('gridDepth').value = header.depth;
+                document.getElementById('frameCount').value = header.frameCount;
+                document.getElementById('frameDuration').value = header.frameDurationMs;
+                document.getElementById('loopAnimation').checked = header.loop;
+
+                // Parse voxel data
+                editorState.voxelData = [];
+                let offset = header.dataOffset;
+
+                for (let f = 0; f < header.frameCount; f++) {
+                    const frame = [];
+                    for (let z = 0; z < header.depth; z++) {
+                        const plane = [];
+                        for (let y = 0; y < header.height; y++) {
+                            const row = [];
+                            for (let x = 0; x < header.width; x++) {
+                                const px = data.subarray(offset, offset + 4);
+                                const voxel = HSBAUtil.decodePixel(px);
+                                row.push(voxel);
+                                offset += 4;
+                            }
+                            plane.push(row);
+                        }
+                        frame.push(plane);
+                    }
+                    editorState.voxelData.push(frame);
+                }
+
+                updateFrameUI();
+                updatePreview();
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // Frame navigation
+        function goToFrame(frameIndex) {
+            editorState.currentFrame = Math.max(0, Math.min(frameIndex, editorState.frameCount - 1));
+            updateStats();
+            updateFrameUI();
+            if (player) {
+                player.currentFrame = editorState.currentFrame;
+                player.render();
+            }
+        }
+
+        function duplicateFrame() {
+            if (editorState.frameCount >= 100) {
+                alert('Maximum frame count reached');
+                return;
+            }
+
+            const currentFrameData = JSON.parse(JSON.stringify(editorState.voxelData[editorState.currentFrame]));
+            editorState.voxelData.splice(editorState.currentFrame + 1, 0, currentFrameData);
+            editorState.frameCount++;
+            editorState.currentFrame++;
+            
+            document.getElementById('frameCount').value = editorState.frameCount;
+            updateStats();
+            updateFrameUI();
+            updatePreview();
+        }
+
+        function deleteFrame() {
+            if (editorState.frameCount <= 1) {
+                alert('Cannot delete the last frame');
+                return;
+            }
+
+            editorState.voxelData.splice(editorState.currentFrame, 1);
+            editorState.frameCount--;
+            editorState.currentFrame = Math.min(editorState.currentFrame, editorState.frameCount - 1);
+            
+            document.getElementById('frameCount').value = editorState.frameCount;
+            updateStats();
+            updateFrameUI();
+            updatePreview();
+        }
+
+        // Event listeners
+        document.getElementById('createProject').addEventListener('click', initEditor);
+        document.getElementById('generateShape').addEventListener('click', generateShape);
+        document.getElementById('setVoxel').addEventListener('click', setVoxel);
+        document.getElementById('clearVoxel').addEventListener('click', clearVoxel);
+        document.getElementById('saveProject').addEventListener('click', () => saveProject());
+        document.getElementById('exportFile').addEventListener('click', exportFile);
+        document.getElementById('importFile').addEventListener('change', importFile);
+
+        // Auto-save settings
+        document.getElementById('autoSaveEnabled').addEventListener('change', saveSettings);
+        document.getElementById('autoSaveInterval').addEventListener('change', saveSettings);
+
+        // Color picker slider and input sync
+        document.getElementById('colorHue').addEventListener('input', updateColorPreview);
+        document.getElementById('colorSat').addEventListener('input', updateColorPreview);
+        document.getElementById('colorBright').addEventListener('input', (e) => {
+            document.getElementById('colorBrightValue').value = e.target.value;
+            updateColorPreview();
+        });
+        document.getElementById('colorAlpha').addEventListener('input', (e) => {
+            document.getElementById('colorAlphaValue').value = e.target.value;
+            updateColorPreview();
+        });
+
+        document.getElementById('colorBrightValue').addEventListener('input', (e) => {
+            document.getElementById('colorBright').value = e.target.value;
+            updateColorPreview();
+        });
+        document.getElementById('colorAlphaValue').addEventListener('input', (e) => {
+            document.getElementById('colorAlpha').value = e.target.value;
+            updateColorPreview();
+        });
+
+        document.getElementById('frameSlider').addEventListener('input', (e) => {
+            goToFrame(parseInt(e.target.value));
+        });
+
+        document.getElementById('currentFrameInput').addEventListener('input', (e) => {
+            const frameNum = parseInt(e.target.value);
+            if (frameNum >= 1 && frameNum <= editorState.frameCount) {
+                goToFrame(frameNum - 1);
+            }
+        });
+
+        document.getElementById('prevFrame').addEventListener('click', () => {
+            goToFrame(editorState.currentFrame - 1);
+        });
+
+        document.getElementById('nextFrame').addEventListener('click', () => {
+            goToFrame(editorState.currentFrame + 1);
+        });
+
+        document.getElementById('duplicateFrame').addEventListener('click', duplicateFrame);
+        document.getElementById('deleteFrame').addEventListener('click', deleteFrame);
+
+        document.getElementById('playBtn').addEventListener('click', () => {
+            if (player) player.play();
+        });
+
+        document.getElementById('pauseBtn').addEventListener('click', () => {
+            if (player) player.pause();
+        });
+
+        // Camera rotation controls
+        document.getElementById('cameraRotX').addEventListener('input', (e) => {
+            if (player) {
+                player.viewRotationX = parseFloat(e.target.value);
+                player.render();
+            }
+        });
+
+        document.getElementById('cameraRotY').addEventListener('input', (e) => {
+            if (player) {
+                player.viewRotationY = parseFloat(e.target.value);
+                player.render();
+            }
+        });
+
+        // Camera zoom controls
+        document.getElementById('cameraZoom').addEventListener('input', (e) => {
+            const zoom = parseFloat(e.target.value);
+            document.getElementById('cameraZoomValue').value = zoom;
+            if (player) {
+                player.zoomLevel = zoom;
+                player.render();
+            }
+        });
+
+        document.getElementById('cameraZoomValue').addEventListener('input', (e) => {
+            const zoom = parseFloat(e.target.value);
+            document.getElementById('cameraZoom').value = zoom;
+            if (player) {
+                player.zoomLevel = zoom;
+                player.render();
+            }
+        });
+
+        document.getElementById('resetCamera').addEventListener('click', () => {
+            document.getElementById('cameraRotX').value = 0.3;
+            document.getElementById('cameraRotY').value = 0.6;
+            document.getElementById('cameraZoom').value = 1.0;
+            document.getElementById('cameraZoomValue').value = 1.0;
+            if (player) {
+                player.viewRotationX = 0.3;
+                player.viewRotationY = 0.6;
+                player.zoomLevel = 1.0;
+                player.render();
+            }
+        });
+
+        // Update shape dimension labels based on shape type
+        document.getElementById('shapeType').addEventListener('change', (e) => {
+            const shapeType = e.target.value;
+            const widthLabel = document.getElementById('shapeWidthLabel');
+            const heightContainer = document.getElementById('shapeHeightContainer');
+            const depthContainer = document.getElementById('shapeDepthContainer');
+            
+            if (shapeType === 'cube') {
+                widthLabel.textContent = 'Size';
+                heightContainer.style.display = 'none';
+                depthContainer.style.display = 'none';
+            } else if (shapeType === 'sphere') {
+                widthLabel.textContent = 'Radius';
+                heightContainer.style.display = 'none';
+                depthContainer.style.display = 'none';
+            } else if (shapeType === 'pyramid' || shapeType === 'cone' || shapeType === 'cylinder') {
+                widthLabel.textContent = 'Base Size';
+                heightContainer.style.display = '';
+                depthContainer.style.display = 'none';
+            } else {
+                widthLabel.textContent = 'Width';
+                heightContainer.style.display = '';
+                depthContainer.style.display = '';
+            }
+        });
+
+        // Sync voxel position sliders with number inputs
+        document.getElementById('voxelXSlider').addEventListener('input', (e) => {
+            document.getElementById('voxelX').value = e.target.value;
+        });
+        document.getElementById('voxelYSlider').addEventListener('input', (e) => {
+            document.getElementById('voxelY').value = e.target.value;
+        });
+        document.getElementById('voxelZSlider').addEventListener('input', (e) => {
+            document.getElementById('voxelZ').value = e.target.value;
+        });
+
+        document.getElementById('voxelX').addEventListener('input', (e) => {
+            document.getElementById('voxelXSlider').value = e.target.value;
+        });
+        document.getElementById('voxelY').addEventListener('input', (e) => {
+            document.getElementById('voxelYSlider').value = e.target.value;
+        });
+        document.getElementById('voxelZ').addEventListener('input', (e) => {
+            document.getElementById('voxelZSlider').value = e.target.value;
+        });
+
+        // Initialize on load
+        const settings = loadSettings();
+        document.getElementById('autoSaveEnabled').checked = settings.autoSaveEnabled;
+        document.getElementById('autoSaveInterval').value = settings.autoSaveInterval;
+        
+        // Try to load last project, otherwise init new one
+        if (!loadLastProject()) {
+            initEditor();
+        }
+        
+        initColorPicker();
+        updateColorPreview();
+        updateStats();
+        updateSavedProjectsList();
+        document.getElementById('shapeType').dispatchEvent(new Event('change'));
+        setupAutoSave();
+    </script>
+</body>
+</html>
+
