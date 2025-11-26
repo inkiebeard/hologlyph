@@ -1,0 +1,38 @@
+# Git attributes for Hologlyph project
+
+# Ensure symlinks are stored as symlinks, not as file content
+*.cursorrules symlink
+*.clinerules symlink
+*.windsurfrules symlink
+*.continuerules symlink
+*.tabninerules symlink
+.aiconfig symlink
+.aiderignore symlink
+aider.md symlink
+claude.md symlink
+gpt.md symlink
+copilot-instructions.md symlink
+
+# Line ending normalization
+* text=auto
+
+# Binary files
+*.glyf binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.webp binary
+
+# Markdown files should use LF
+*.md text eol=lf
+
+# JavaScript files should use LF
+*.js text eol=lf
+*.mjs text eol=lf
+
+# HTML files should use LF
+*.html text eol=lf
+
+# JSON files should use LF
+*.json text eol=lf
+
