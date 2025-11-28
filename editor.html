@@ -213,6 +213,55 @@
         canvas {
             border: 2px solid #4a5568;
             background: #0f0f1e;
+            cursor: crosshair;
+        }
+        
+        /* Remove crosshair - using mouse position instead */
+        
+        /* Axis indicator overlay */
+        .axis-overlay {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 100px;
+            height: 100px;
+            pointer-events: none;
+            z-index: 5;
+            transition: transform 0.1s ease;
+        }
+        
+        .axis-arrow {
+            position: absolute;
+            left: 50px;
+            top: 50px;
+            transform-origin: 0 0;
+            transition: all 0.1s ease;
+        }
+        
+        .axis-arrow-line {
+            width: 40px;
+            height: 3px;
+            position: absolute;
+        }
+        
+        .axis-arrow-head {
+            position: absolute;
+            right: -8px;
+            top: 50%;
+            width: 0;
+            height: 0;
+            border-left: 8px solid;
+            border-top: 4px solid transparent;
+            border-bottom: 4px solid transparent;
+            transform: translateY(-50%);
+        }
+        
+        .axis-label {
+            position: absolute;
+            font-weight: bold;
+            font-size: 14px;
+            text-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.6);
+            transition: all 0.1s ease;
         }
         
         .bottom-panel {
@@ -649,15 +698,29 @@
                 <div class="panel-resize-handle" data-panel="color"></div>
 
                 <!-- Voxel Editor Panel -->
-                <div class="panel" id="voxel-panel" style="height: 450px;">
+                <div class="panel" id="voxel-panel" style="height: 550px;">
                     <div class="panel-header">
                         <h2>Voxel Editor</h2>
                         <button class="panel-close" data-panel="voxel">✕</button>
                     </div>
                     <div class="panel-content">
                     
+                    <div class="notification" style="background: rgba(102, 126, 234, 0.1); border: 1px solid #667eea; padding: 0.75rem; margin-bottom: 1rem;">
+                        <p style="font-size: 0.85rem; margin-bottom: 0.5rem;"><strong>🎮 Interactive Mode:</strong></p>
+                        <p style="font-size: 0.75rem; color: #ddd;">
+                            • <strong>Purple voxel</strong> shows cursor position<br>
+                            • <strong>Point & click</strong> to place anywhere<br>
+                            • <strong>Right-click</strong> to remove<br>
+                            • <strong>W/S</strong> forward/back | <strong>A/D</strong> left/right<br>
+                            • <strong>Q/E</strong> down/up | <strong>Space</strong> place<br>
+                            • <strong>Drag</strong> rotate | <strong>Shift+Drag</strong> pan<br>
+                            • <strong>Wheel</strong> zoom | <strong>R</strong> reset pan<br>
+                            • <strong>O</strong> toggle onion skin (blue=past, red=future)
+                        </p>
+                    </div>
+                    
                     <div class="field">
-                        <label class="label">Position</label>
+                        <label class="label">Manual Position Control</label>
                         
                         <label class="label is-small">X</label>
                         <input class="slider is-fullwidth is-small" type="range" id="voxelXSlider" min="0" max="15" value="0">
@@ -673,11 +736,11 @@
                     </div>
 
                     <button class="button is-success is-fullwidth mt-4" id="setVoxel">
-                        Set Voxel
+                        Set Voxel (or press Space)
                     </button>
                     
                     <button class="button is-warning is-fullwidth mt-2" id="clearVoxel">
-                        Clear Voxel
+                        Clear Voxel (or press Delete)
                     </button>
                     </div>
                 </div>
@@ -774,11 +837,10 @@
                     <div class="field">
                         <label class="checkbox">
                             <input type="checkbox" id="autoSaveEnabled" checked>
-                            Auto-save every 
-                            <input class="input is-small" type="number" id="autoSaveInterval" value="30" min="10" max="300" style="width: 70px; display: inline-block; margin: 0 0.25rem;"> 
-                            seconds
+                            Auto-save on changes (2 second delay)
                         </label>
                         <p class="help mt-2">Last saved: <span id="lastSaveTime">Never</span></p>
+                        <p class="help">Automatically saves when you place voxels or modify frames</p>
                     </div>
 
                     <hr style="background: #2a2a3e; margin: 1rem 0;">
@@ -819,8 +881,38 @@
 
         <!-- Main Content -->
         <div class="main-content">
-            <div class="canvas-container">
+            <div class="canvas-container" style="position: relative;">
                 <canvas id="previewCanvas" width="800" height="800"></canvas>
+                
+                <!-- Axis indicator overlay -->
+                <div class="axis-overlay">
+                    <!-- X axis (red) -->
+                    <div class="axis-arrow" id="axisX">
+                        <div class="axis-arrow-line" style="background: #ff4444;">
+                            <div class="axis-arrow-head" style="border-left-color: #ff4444;"></div>
+                        </div>
+                    </div>
+                    <div class="axis-label" id="labelX" style="color: #ff4444;">X</div>
+                    
+                    <!-- Y axis (green) -->
+                    <div class="axis-arrow" id="axisY">
+                        <div class="axis-arrow-line" style="background: #44ff44;">
+                            <div class="axis-arrow-head" style="border-left-color: #44ff44;"></div>
+                        </div>
+                    </div>
+                    <div class="axis-label" id="labelY" style="color: #44ff44;">Y</div>
+                    
+                    <!-- Z axis (blue) -->
+                    <div class="axis-arrow" id="axisZ">
+                        <div class="axis-arrow-line" style="background: #4444ff;">
+                            <div class="axis-arrow-head" style="border-left-color: #4444ff;"></div>
+                        </div>
+                    </div>
+                    <div class="axis-label" id="labelZ" style="color: #4444ff;">Z</div>
+                    
+                    <!-- Center dot -->
+                    <div style="position: absolute; left: 47px; top: 47px; width: 6px; height: 6px; background: #888; border-radius: 50%;"></div>
+                </div>
             </div>
             
             <div class="bottom-panel">
@@ -830,6 +922,17 @@
                             <strong>Frame: </strong>
                             <input class="input is-small ml-2" style="width: 70px;" type="number" id="currentFrameInput" min="1" value="1">
                             <strong class="ml-2">/ <span id="totalFramesDisplay">1</span></strong>
+                        </div>
+                        <div class="level-item ml-4">
+                            <strong>Cursor: </strong>
+                            <span class="ml-2" style="color: #667eea; font-family: monospace;" id="cursorPositionDisplay">X:0 Y:0 Z:0</span>
+                            <span class="ml-3" style="color: #8b8b9e; font-size: 0.85rem;" id="viewPlaneIndicator">View: Front</span>
+                            <span class="ml-3" style="font-size: 0.85rem;" id="onionSkinIndicator">
+                                <span style="color: #8b8b9e;">Onion:</span> 
+                                <span style="color: #8b8b9e;" id="onionSkinStatus">OFF</span>
+                                <span style="color: #4444ff; opacity: 0;" id="onionSkinPrev">(← blue)</span>
+                                <span style="color: #ff4444; opacity: 0;" id="onionSkinNext">(red →)</span>
+                            </span>
                         </div>
                     </div>
                     <div class="level-right">
@@ -846,8 +949,14 @@
                 <div class="buttons is-centered mt-3">
                     <button class="button is-small" id="prevFrame">← Previous</button>
                     <button class="button is-small" id="nextFrame">Next →</button>
+                    <button class="button is-small is-success" id="addFrame">+ Add Empty</button>
                     <button class="button is-small is-info" id="duplicateFrame">Duplicate Frame</button>
                     <button class="button is-small is-danger" id="deleteFrame">Delete Frame</button>
+                </div>
+                
+                <div class="help has-text-centered mt-2" style="color: #8b8b9e; font-size: 0.85rem;">
+                    💡 <strong>Interactive Controls:</strong> Point & click to place | Right-click to remove | 
+                    WASD/QE: Move cursor | Drag: Rotate | Shift+Drag: Pan | Wheel: Zoom | R: Reset pan | O: Toggle onion skin
                 </div>
             </div>
         </div>
@@ -946,6 +1055,15 @@
             voxelData: null,
             projectName: 'Untitled',
             lastSaved: null,
+            // Interactive cursor state
+            cursorPosition: { x: 0, y: 0, z: 0 },
+            cursorVisible: true,
+            placementMode: 'add', // 'add' or 'remove'
+            // Camera state
+            cameraPan: { x: 0, y: 0 }, // Pan offset in pixels
+            // Onion skinning
+            onionSkinEnabled: false,
+            onionSkinFrames: 3, // Number of frames to show in each direction
         };
 
         let player = null;
@@ -962,16 +1080,14 @@
         function loadSettings() {
             const settings = JSON.parse(localStorage.getItem(STORAGE_KEYS.SETTINGS) || '{}');
             return {
-                autoSaveEnabled: settings.autoSaveEnabled !== false,
-                autoSaveInterval: settings.autoSaveInterval || 30
+                autoSaveEnabled: settings.autoSaveEnabled !== false
             };
         }
 
         // Save user settings
         function saveSettings() {
             const settings = {
-                autoSaveEnabled: document.getElementById('autoSaveEnabled').checked,
-                autoSaveInterval: parseInt(document.getElementById('autoSaveInterval').value)
+                autoSaveEnabled: document.getElementById('autoSaveEnabled').checked
             };
             localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
             setupAutoSave();
@@ -1118,22 +1234,33 @@
             }
         }
 
-        // Setup auto-save
-        function setupAutoSave() {
-            if (autoSaveInterval) {
-                clearInterval(autoSaveInterval);
-                autoSaveInterval = null;
-            }
-
+        // Debounced auto-save - saves after a delay to batch rapid changes
+        let autoSaveTimeout = null;
+        const AUTO_SAVE_DEBOUNCE_MS = 500; // Wait half second after last change
+        
+        function triggerAutoSave() {
             const enabled = document.getElementById('autoSaveEnabled').checked;
-            const interval = parseInt(document.getElementById('autoSaveInterval').value) * 1000;
-
-            if (enabled) {
-                autoSaveInterval = setInterval(() => {
-                    saveProject();
-                    console.log('Auto-saved project');
-                }, interval);
+            if (!enabled) return;
+            
+            // Clear existing timeout
+            if (autoSaveTimeout) {
+                clearTimeout(autoSaveTimeout);
             }
+            
+            // Set new timeout
+            autoSaveTimeout = setTimeout(() => {
+                saveProject();
+                console.log('Auto-saved project');
+                autoSaveTimeout = null;
+            }, AUTO_SAVE_DEBOUNCE_MS);
+        }
+        
+        // Setup auto-save (now just for UI, actual saves happen on changes)
+        function setupAutoSave() {
+            // No interval needed - saves happen on changes
+            // This function now just updates the UI
+            const enabled = document.getElementById('autoSaveEnabled').checked;
+            console.log('Auto-save:', enabled ? 'enabled (saves on changes)' : 'disabled');
         }
 
         // Global functions for onclick handlers
@@ -1194,8 +1321,49 @@
             updatePreview();
         }
 
-        // Generate hologlyph data from editor state
+        // Generate hologlyph data from editor state (without cursor)
         function generateHologlyphData() {
+            return generateHologlyphDataWithCursor(true); // Skip cursor highlight
+        }
+
+        // Update preview with cursor highlight
+        function updatePreview(skipCursorHighlight = false) {
+            const canvas = document.getElementById('previewCanvas');
+            
+            // Add temporary cursor highlight voxel to the data
+            const data = generateHologlyphDataWithCursor(skipCursorHighlight);
+
+            // Preserve camera rotation and zoom
+            const rotX = player ? player.viewRotationX : 0.3;
+            const rotY = player ? player.viewRotationY : 0.6;
+            const zoom = player ? player.zoomLevel : 1.0;
+
+            if (player) {
+                player.destroy();
+            }
+
+            player = new HologlyphPlayer({
+                canvas,
+                data,
+                autoPlay: false,
+                voxelSize: 8,
+                orbitalDrag: false, // We'll handle dragging ourselves to support pan
+                useWebGL: true,
+                showGrid: false, // Disabled for cleaner editing experience
+                initialRotationX: rotX,
+                initialRotationY: rotY
+            });
+
+            player.zoomLevel = zoom;
+            player.currentFrame = editorState.currentFrame;
+            player.render();
+            
+            // Update axis indicator overlay
+            drawAxisIndicator();
+        }
+        
+        // Generate hologlyph data with optional cursor highlight and onion skinning
+        function generateHologlyphDataWithCursor(skipCursor = false) {
             const header = createHologlyphHeader({
                 width: editorState.width,
                 height: editorState.height,
@@ -1219,7 +1387,35 @@
                 for (let z = 0; z < editorState.depth; z++) {
                     for (let y = 0; y < editorState.height; y++) {
                         for (let x = 0; x < editorState.width; x++) {
-                            const voxel = editorState.voxelData[f][z][y][x];
+                            let voxel = editorState.voxelData[f][z][y][x];
+                            
+                            // Apply onion skinning for current frame display
+                            if (editorState.onionSkinEnabled && f === editorState.currentFrame) {
+                                voxel = applyOnionSkin(x, y, z, voxel);
+                            }
+                            
+                            // Add cursor highlight for current frame at cursor position
+                            if (!skipCursor && 
+                                f === editorState.currentFrame &&
+                                x === editorState.cursorPosition.x &&
+                                y === editorState.cursorPosition.y &&
+                                z === editorState.cursorPosition.z &&
+                                editorState.cursorVisible) {
+                                
+                                // If voxel is empty, show cursor as semi-transparent highlight
+                                if (voxel.a === 0 || voxel.b === 0) {
+                                    voxel = { h: 170, s: 90, b: 80, a: 60 }; // Brighter purple highlight
+                                } else {
+                                    // If voxel exists, add a bright outline effect
+                                    voxel = { 
+                                        h: voxel.h, 
+                                        s: Math.max(0, voxel.s - 30), 
+                                        b: Math.min(100, voxel.b + 40), 
+                                        a: Math.min(100, voxel.a + 10)
+                                    };
+                                }
+                            }
+                            
                             const pixel = HSBAUtil.encodePixel(voxel);
                             buffer.set(pixel, offset);
                             offset += 4;
@@ -1230,36 +1426,597 @@
 
             return buffer;
         }
-
-        // Update preview
-        function updatePreview() {
-            const canvas = document.getElementById('previewCanvas');
-            const data = generateHologlyphData();
-
-            // Preserve camera rotation and zoom
-            const rotX = player ? player.viewRotationX : 0.3;
-            const rotY = player ? player.viewRotationY : 0.6;
-            const zoom = player ? player.zoomLevel : 1.0;
-
-            if (player) {
-                player.destroy();
+        
+        // Apply onion skinning effect - blend nearby frames as ghosted silhouettes
+        function applyOnionSkin(x, y, z, currentVoxel) {
+            const current = editorState.currentFrame;
+            const maxDistance = editorState.onionSkinFrames;
+            
+            // Start with current frame voxel
+            let resultVoxel = { ...currentVoxel };
+            
+            // If current voxel is empty, show ghosts from nearby frames
+            if (currentVoxel.a === 0 || currentVoxel.b === 0) {
+                let foundGhost = false;
+                
+                // Check previous frames (shown in blue tint) - closest to farthest
+                for (let distance = 1; distance <= maxDistance; distance++) {
+                    const prevFrame = current - distance;
+                    if (prevFrame >= 0 && !foundGhost) {
+                        const prevVoxel = editorState.voxelData[prevFrame][z][y][x];
+                        if (prevVoxel.a > 0 && prevVoxel.b > 0) {
+                            // Show as blue ghost with opacity falloff (linear)
+                            const opacityFactor = (maxDistance - distance + 1) / (maxDistance + 1);
+                            const opacity = Math.floor(opacityFactor * ONION_SKIN_MAX_OPACITY);
+                            resultVoxel = {
+                                h: ONION_SKIN_HUE_PREV,
+                                s: ONION_SKIN_SATURATION,
+                                b: ONION_SKIN_BRIGHTNESS,
+                                a: opacity
+                            };
+                            foundGhost = true;
+                        }
+                    }
+                }
+                
+                // Check next frames (shown in red tint) - closest to farthest
+                for (let distance = 1; distance <= maxDistance; distance++) {
+                    const nextFrame = current + distance;
+                    if (nextFrame < editorState.frameCount && !foundGhost) {
+                        const nextVoxel = editorState.voxelData[nextFrame][z][y][x];
+                        if (nextVoxel.a > 0 && nextVoxel.b > 0) {
+                            // Show as red ghost with opacity falloff (linear)
+                            const opacityFactor = (maxDistance - distance + 1) / (maxDistance + 1);
+                            const opacity = Math.floor(opacityFactor * ONION_SKIN_MAX_OPACITY);
+                            resultVoxel = {
+                                h: ONION_SKIN_HUE_NEXT,
+                                s: ONION_SKIN_SATURATION,
+                                b: ONION_SKIN_BRIGHTNESS,
+                                a: opacity
+                            };
+                            foundGhost = true;
+                        }
+                    }
+                }
             }
-
-            player = new HologlyphPlayer({
-                canvas,
-                data,
-                autoPlay: false,
-                voxelSize: 8,
-                orbitalDrag: true,
-                useWebGL: true,
-                showGrid: true,
-                initialRotationX: rotX,
-                initialRotationY: rotY
+            
+            return resultVoxel;
+        }
+        
+        // ========================================
+        // INTERACTIVE EDITOR FEATURES
+        // ========================================
+        // 
+        // This section adds Minecraft-like interactive voxel placement:
+        // - Crosshair-based selection (center of screen, like FPS games)
+        // - Click to place voxels at crosshair position
+        // - Right-click to remove voxels
+        // - Keyboard controls: WASD (X/Y), Q/E (Z), Space (place), Delete (remove)
+        // - Visual cursor shown as semi-transparent voxel in the grid
+        // - 3D axis indicator shows orientation
+        //
+        // Note: All editor-only features (Layer 4), no player modifications
+        // ========================================
+        
+        // Constants for interactive editing
+        const VOXEL_SIZE = 8; // Must match player voxelSize
+        const AXIS_INDICATOR_SIZE = 80; // Size of axis indicator widget
+        const AXIS_LENGTH = 30; // Length of axis arrows
+        const AXIS_LINE_THICKNESS = 3; // Thickness of axis lines (pixels)
+        const AXIS_OFFSET = 12; // Offset from center to prevent overlap (pixels)
+        const AXIS_LABEL_OFFSET = 10; // Distance of label from arrow end
+        const ONION_SKIN_HUE_PREV = 170; // Blue hue for previous frames
+        const ONION_SKIN_HUE_NEXT = 0; // Red hue for future frames
+        const ONION_SKIN_SATURATION = 70; // Saturation for ghost frames
+        const ONION_SKIN_BRIGHTNESS = 50; // Brightness for ghost frames
+        const ONION_SKIN_MAX_OPACITY = 40; // Max opacity for closest ghost frame
+        
+        // Throttle preview updates for performance
+        let previewUpdateThrottle = null;
+        function throttledPreviewUpdate() {
+            if (previewUpdateThrottle) return;
+            
+            previewUpdateThrottle = setTimeout(() => {
+                updatePreview();
+                previewUpdateThrottle = null;
+            }, 50); // Update at most 20 times per second
+        }
+        
+        // Update 3D axis indicator (HTML overlay)
+        function drawAxisIndicator() {
+            if (!player) return;
+            
+            // Get camera rotation
+            const rotX = player.viewRotationX || 0.3;
+            const rotY = player.viewRotationY || 0.6;
+            
+            const AXIS_CENTER = 50; // Center position in widget (pixels)
+            
+            // Define axis vectors
+            const axes = [
+                { id: 'axisX', labelId: 'labelX', dir: [1, 0, 0] },
+                { id: 'axisY', labelId: 'labelY', dir: [0, 1, 0] },
+                { id: 'axisZ', labelId: 'labelZ', dir: [0, 0, 1] }
+            ];
+            
+            // Transform each axis
+            axes.forEach(axis => {
+                const [x, y, z] = axis.dir;
+                
+                // Apply Y rotation (horizontal)
+                const cosY = Math.cos(rotY);
+                const sinY = Math.sin(rotY);
+                const rx = x * cosY - z * sinY;
+                const rz = x * sinY + z * cosY;
+                
+                // Apply X rotation (vertical)
+                const cosX = Math.cos(rotX);
+                const sinX = Math.sin(rotX);
+                const ry = y * cosX - rz * sinX;
+                const finalZ = y * sinX + rz * cosX;
+                
+                // Calculate angle for 2D rotation
+                const angle = Math.atan2(-ry, rx) * (180 / Math.PI);
+                const length = Math.sqrt(rx * rx + ry * ry) * AXIS_LENGTH;
+                
+                // Normalize the 2D direction vector
+                const dirLength = Math.sqrt(rx * rx + ry * ry);
+                const dirX = dirLength > 0 ? rx / dirLength : 0;
+                const dirY = dirLength > 0 ? ry / dirLength : 0;
+                
+                // Calculate offset along arrow direction to prevent overlap
+                const offsetX = dirX * AXIS_OFFSET;
+                const offsetY = -dirY * AXIS_OFFSET; // Negative because Y is inverted in screen space
+                
+                // Update arrow element
+                const arrowEl = document.getElementById(axis.id);
+                if (arrowEl) {
+                    arrowEl.style.left = `${AXIS_CENTER + offsetX}px`;
+                    arrowEl.style.top = `${AXIS_CENTER + offsetY}px`;
+                    arrowEl.style.transform = `rotate(${angle}deg)`;
+                    const lineEl = arrowEl.querySelector('.axis-arrow-line');
+                    if (lineEl) {
+                        lineEl.style.width = `${length}px`;
+                        lineEl.style.height = `${AXIS_LINE_THICKNESS}px`;
+                    }
+                    arrowEl.style.opacity = finalZ > 0 ? '1' : '0.3';
+                    arrowEl.style.zIndex = finalZ > 0 ? '10' : '5';
+                }
+                
+                // Update label position
+                const labelEl = document.getElementById(axis.labelId);
+                if (labelEl) {
+                    const labelX = rx * AXIS_LENGTH + offsetX + AXIS_LABEL_OFFSET;
+                    const labelY = -ry * AXIS_LENGTH + offsetY + 5;
+                    labelEl.style.left = `${AXIS_CENTER + labelX}px`;
+                    labelEl.style.top = `${AXIS_CENTER + labelY}px`;
+                    labelEl.style.opacity = finalZ > 0 ? '1' : '0.3';
+                    labelEl.style.zIndex = finalZ > 0 ? '10' : '5';
+                }
             });
-
-            player.zoomLevel = zoom;
-            player.currentFrame = editorState.currentFrame;
-            player.render();
+        }
+        
+        // Get voxel at mouse position using raycasting
+        function getVoxelFromMouse(mouseX, mouseY) {
+            if (!player) return editorState.cursorPosition;
+            
+            const canvas = player.canvas;
+            const rect = canvas.getBoundingClientRect();
+            
+            // Convert mouse to normalized device coordinates (-1 to 1)
+            const normX = ((mouseX - rect.left) / rect.width) * 2 - 1;
+            const normY = -(((mouseY - rect.top) / rect.height) * 2 - 1);
+            
+            // Get camera parameters
+            const rotX = player.viewRotationX || 0.3;
+            const rotY = player.viewRotationY || 0.6;
+            
+            // Grid dimensions
+            const centerX = editorState.width / 2;
+            const centerY = editorState.height / 2;
+            const centerZ = editorState.depth / 2;
+            
+            // Normalize rotation Y to 0-2π range
+            const rotYNorm = ((rotY % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+            
+            // Determine primary viewing direction and map mouse to voxel
+            let x, y, z;
+            let viewPlane;
+            
+            const cosRotX = Math.cos(rotX);
+            
+            // Map based on viewing angle with full mouse sweep range
+            // Account for zoom to maintain consistent mapping
+            const zoom = player.zoomLevel || 1.0;
+            const zoomFactor = 1.0 / zoom; // Inverse zoom for correct mapping
+            
+            if (rotYNorm < Math.PI / 4 || rotYNorm > 7 * Math.PI / 4) {
+                // Front view (Z+ direction)
+                viewPlane = 'front';
+                x = Math.floor(centerX + normX * (editorState.width / 2) * zoomFactor);
+                y = Math.floor(centerY + normY * (editorState.height / 2) * cosRotX * zoomFactor);
+                z = editorState.cursorPosition.z;
+            } else if (rotYNorm >= Math.PI / 4 && rotYNorm < 3 * Math.PI / 4) {
+                // Right view (X+ direction)
+                viewPlane = 'right';
+                z = Math.floor(centerZ - normX * (editorState.depth / 2) * zoomFactor);
+                y = Math.floor(centerY + normY * (editorState.height / 2) * cosRotX * zoomFactor);
+                x = editorState.cursorPosition.x;
+            } else if (rotYNorm >= 3 * Math.PI / 4 && rotYNorm < 5 * Math.PI / 4) {
+                // Back view (Z- direction)
+                viewPlane = 'back';
+                x = Math.floor(centerX - normX * (editorState.width / 2) * zoomFactor);
+                y = Math.floor(centerY + normY * (editorState.height / 2) * cosRotX * zoomFactor);
+                z = editorState.cursorPosition.z;
+            } else {
+                // Left view (X- direction)
+                viewPlane = 'left';
+                z = Math.floor(centerZ + normX * (editorState.depth / 2) * zoomFactor);
+                y = Math.floor(centerY + normY * (editorState.height / 2) * cosRotX * zoomFactor);
+                x = editorState.cursorPosition.x;
+            }
+            
+            // Update view plane indicator
+            updateViewPlaneIndicator(viewPlane);
+            
+            // Clamp to grid bounds
+            x = Math.max(0, Math.min(editorState.width - 1, x));
+            y = Math.max(0, Math.min(editorState.height - 1, y));
+            z = Math.max(0, Math.min(editorState.depth - 1, z));
+            
+            return { x, y, z };
+        }
+        
+        // Place voxel at cursor position
+        function placeVoxelAtCursor() {
+            const { x, y, z } = editorState.cursorPosition;
+            const color = getCurrentColor();
+            
+            if (x >= 0 && x < editorState.width &&
+                y >= 0 && y < editorState.height &&
+                z >= 0 && z < editorState.depth) {
+                editorState.voxelData[editorState.currentFrame][z][y][x] = color;
+                updateStats();
+                updatePreview();
+                triggerAutoSave();
+            }
+        }
+        
+        // Remove voxel at cursor position
+        function removeVoxelAtCursor() {
+            const { x, y, z } = editorState.cursorPosition;
+            
+            if (x >= 0 && x < editorState.height &&
+                y >= 0 && y < editorState.height &&
+                z >= 0 && z < editorState.depth) {
+                editorState.voxelData[editorState.currentFrame][z][y][x] = { h: 0, s: 0, b: 0, a: 0 };
+                updateStats();
+                updatePreview();
+                triggerAutoSave();
+            }
+        }
+        
+        // Update cursor position display
+        function updateCursorDisplay() {
+            const display = document.getElementById('cursorPositionDisplay');
+            if (display) {
+                const { x, y, z } = editorState.cursorPosition;
+                display.textContent = `X:${x} Y:${y} Z:${z}`;
+            }
+        }
+        
+        // Update view plane indicator
+        function updateViewPlaneIndicator(plane) {
+            const indicator = document.getElementById('viewPlaneIndicator');
+            if (indicator) {
+                const planes = {
+                    'front': 'View: Front (XY plane)',
+                    'right': 'View: Right (ZY plane)',
+                    'back': 'View: Back (XY plane)',
+                    'left': 'View: Left (ZY plane)'
+                };
+                indicator.textContent = planes[plane] || 'View: Unknown';
+            }
+        }
+        
+        // Move cursor with keyboard (camera-relative)
+        function moveCursor(dx, dy, dz) {
+            if (!player) return;
+            
+            // Get camera rotation (Y axis rotation - horizontal)
+            const rotY = player.viewRotationY || 0.6;
+            
+            // Transform movement based on camera rotation
+            // dx: left(-)/right(+) in camera view
+            // dy: down(-)/up(+) absolute
+            // dz: back(-)/forward(+) in camera view
+            
+            const cosY = Math.cos(rotY);
+            const sinY = Math.sin(rotY);
+            
+            // Rotate horizontal movement (dx and dz) around Y axis
+            // Standard 2D rotation matrix:
+            // [cos -sin] [dx]   [dx*cos - dz*sin]
+            // [sin  cos] [dz] = [dx*sin + dz*cos]
+            const worldDx = Math.round(dx * cosY - dz * sinY);
+            const worldDy = dy; // Y movement is always absolute (up/down)
+            const worldDz = Math.round(dx * sinY + dz * cosY);
+            
+            // Apply movement with bounds checking
+            editorState.cursorPosition.x = Math.max(0, Math.min(editorState.width - 1, editorState.cursorPosition.x + worldDx));
+            editorState.cursorPosition.y = Math.max(0, Math.min(editorState.height - 1, editorState.cursorPosition.y + worldDy));
+            editorState.cursorPosition.z = Math.max(0, Math.min(editorState.depth - 1, editorState.cursorPosition.z + worldDz));
+            
+            // Update voxel editor UI
+            document.getElementById('voxelX').value = editorState.cursorPosition.x;
+            document.getElementById('voxelY').value = editorState.cursorPosition.y;
+            document.getElementById('voxelZ').value = editorState.cursorPosition.z;
+            document.getElementById('voxelXSlider').value = editorState.cursorPosition.x;
+            document.getElementById('voxelYSlider').value = editorState.cursorPosition.y;
+            document.getElementById('voxelZSlider').value = editorState.cursorPosition.z;
+            
+            updateCursorDisplay();
+            throttledPreviewUpdate();
+        }
+        
+        // Setup interactive canvas events
+        function setupInteractiveCanvas() {
+            const canvas = document.getElementById('previewCanvas');
+            
+            // Track mouse state for dragging
+            let mouseDownPos = null;
+            let isDragging = false;
+            let isShiftHeld = false;
+            let dragStartRotX = 0;
+            let dragStartRotY = 0;
+            let lastMouseX = null;
+            let lastMouseY = null;
+            const DRAG_THRESHOLD = 5; // pixels
+            const ROTATION_SPEED = 0.005;
+            
+            // Update axis indicator when camera rotates
+            let lastRotX = null;
+            let lastRotY = null;
+            
+            function checkCameraUpdate() {
+                if (!player) return;
+                
+                const rotX = player.viewRotationX;
+                const rotY = player.viewRotationY;
+                
+                // Redraw axes when camera rotates
+                if (lastRotX === null || lastRotY === null ||
+                    Math.abs(rotX - lastRotX) > 0.001 || 
+                    Math.abs(rotY - lastRotY) > 0.001) {
+                    
+                    lastRotX = rotX;
+                    lastRotY = rotY;
+                    drawAxisIndicator();
+                    
+                    // If we have a last mouse position, update cursor
+                    if (lastMouseX !== null && lastMouseY !== null) {
+                        updateCursorFromMouse(lastMouseX, lastMouseY);
+                    }
+                }
+            }
+            
+            // Poll for camera rotation changes
+            setInterval(checkCameraUpdate, 16); // ~60 FPS
+            
+            // Update cursor position from mouse
+            function updateCursorFromMouse(mouseX, mouseY) {
+                const voxel = getVoxelFromMouse(mouseX, mouseY);
+                if (voxel.x !== editorState.cursorPosition.x ||
+                    voxel.y !== editorState.cursorPosition.y ||
+                    voxel.z !== editorState.cursorPosition.z) {
+                    
+                    editorState.cursorPosition = voxel;
+                    
+                    // Update voxel editor UI
+                    document.getElementById('voxelX').value = voxel.x;
+                    document.getElementById('voxelY').value = voxel.y;
+                    document.getElementById('voxelZ').value = voxel.z;
+                    document.getElementById('voxelXSlider').value = voxel.x;
+                    document.getElementById('voxelYSlider').value = voxel.y;
+                    document.getElementById('voxelZSlider').value = voxel.z;
+                    
+                    updateCursorDisplay();
+                    throttledPreviewUpdate();
+                }
+            }
+            
+            canvas.addEventListener('mousedown', (e) => {
+                mouseDownPos = { x: e.clientX, y: e.clientY };
+                isDragging = false;
+                isShiftHeld = e.shiftKey;
+                
+                if (player) {
+                    dragStartRotX = player.viewRotationX;
+                    dragStartRotY = player.viewRotationY;
+                }
+            });
+            
+            canvas.addEventListener('mousemove', (e) => {
+                // Store mouse position for cursor updates
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+                
+                // Check if dragging
+                if (e.buttons > 0 && mouseDownPos) {
+                    const dx = e.clientX - mouseDownPos.x;
+                    const dy = e.clientY - mouseDownPos.y;
+                    
+                    if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
+                        isDragging = true;
+                        
+                        if (isShiftHeld) {
+                            // Pan mode: translate the canvas
+                            editorState.cameraPan.x += dx / 2;
+                            editorState.cameraPan.y += dy / 2;
+                            
+                            // Apply transform to canvas
+                            canvas.style.transform = `translate(${editorState.cameraPan.x}px, ${editorState.cameraPan.y}px)`;
+                            
+                            // Update axis indicator position too
+                            const axisOverlay = document.querySelector('.axis-overlay');
+                            if (axisOverlay) {
+                                axisOverlay.style.transform = `translate(${editorState.cameraPan.x}px, ${editorState.cameraPan.y}px)`;
+                            }
+                            
+                            // Reset mouse position for continuous panning
+                            mouseDownPos = { x: e.clientX, y: e.clientY };
+                            
+                            canvas.style.cursor = 'move';
+                        } else {
+                            // Rotate mode: orbital rotation
+                            if (player) {
+                                player.viewRotationY = dragStartRotY + dx * ROTATION_SPEED;
+                                player.viewRotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, 
+                                    dragStartRotX + dy * ROTATION_SPEED));
+                                player.render();
+                                drawAxisIndicator();
+                            }
+                            canvas.style.cursor = 'grabbing';
+                        }
+                    }
+                } else {
+                    // Not dragging - update cursor position from mouse
+                    canvas.style.cursor = 'crosshair';
+                    updateCursorFromMouse(e.clientX, e.clientY);
+                }
+            });
+            
+            // Click to place voxel (only if not dragging)
+            canvas.addEventListener('mouseup', (e) => {
+                canvas.style.cursor = 'crosshair';
+                
+                // Only place if this was a click (not a drag)
+                if (!isDragging && mouseDownPos) {
+                    if (e.button === 0) { // Left click
+                        placeVoxelAtCursor();
+                    }
+                }
+                mouseDownPos = null;
+                isDragging = false;
+                isShiftHeld = false;
+            });
+            
+            // Right click to remove
+            canvas.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                if (!isDragging) {
+                    removeVoxelAtCursor();
+                }
+            });
+            
+            // Mouse wheel for zoom
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                if (player) {
+                    const zoomDelta = e.deltaY * -0.001;
+                    player.zoomLevel = Math.max(0.3, Math.min(3, player.zoomLevel + zoomDelta));
+                    player.render();
+                    drawAxisIndicator();
+                }
+            });
+            
+            // Keyboard controls
+            document.addEventListener('keydown', (e) => {
+                // Don't interfere with input fields
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                    return;
+                }
+                
+                const CURSOR_MOVE_STEP = 1;
+                
+                switch (e.key.toLowerCase()) {
+                    case 'w':
+                        e.preventDefault();
+                        // Forward (into screen in camera view)
+                        moveCursor(0, 0, CURSOR_MOVE_STEP);
+                        break;
+                    case 's':
+                        e.preventDefault();
+                        // Backward (out of screen in camera view)
+                        moveCursor(0, 0, -CURSOR_MOVE_STEP);
+                        break;
+                    case 'a':
+                        e.preventDefault();
+                        // Left in camera view
+                        moveCursor(-CURSOR_MOVE_STEP, 0, 0);
+                        break;
+                    case 'd':
+                        e.preventDefault();
+                        // Right in camera view
+                        moveCursor(CURSOR_MOVE_STEP, 0, 0);
+                        break;
+                    case 'q':
+                        e.preventDefault();
+                        // Down (absolute)
+                        moveCursor(0, -CURSOR_MOVE_STEP, 0);
+                        break;
+                    case 'e':
+                        e.preventDefault();
+                        // Up (absolute)
+                        moveCursor(0, CURSOR_MOVE_STEP, 0);
+                        break;
+                    case ' ':
+                        e.preventDefault();
+                        placeVoxelAtCursor();
+                        break;
+                    case 'backspace':
+                    case 'delete':
+                        e.preventDefault();
+                        removeVoxelAtCursor();
+                        break;
+                    case 'shift':
+                        editorState.placementMode = 'remove';
+                        break;
+                    case 'r':
+                        // Reset camera pan
+                        e.preventDefault();
+                        editorState.cameraPan = { x: 0, y: 0 };
+                        const canvas = document.getElementById('previewCanvas');
+                        if (canvas) {
+                            canvas.style.transform = 'translate(0px, 0px)';
+                        }
+                        const axisOverlay = document.querySelector('.axis-overlay');
+                        if (axisOverlay) {
+                            axisOverlay.style.transform = 'translate(0px, 0px)';
+                        }
+                        break;
+                    case 'o':
+                        // Toggle onion skinning
+                        e.preventDefault();
+                        editorState.onionSkinEnabled = !editorState.onionSkinEnabled;
+                        
+                        // Update indicator
+                        const statusEl = document.getElementById('onionSkinStatus');
+                        const prevEl = document.getElementById('onionSkinPrev');
+                        const nextEl = document.getElementById('onionSkinNext');
+                        
+                        if (statusEl) {
+                            statusEl.textContent = editorState.onionSkinEnabled ? 'ON' : 'OFF';
+                            statusEl.style.color = editorState.onionSkinEnabled ? '#44ff44' : '#8b8b9e';
+                        }
+                        if (prevEl) {
+                            prevEl.style.opacity = editorState.onionSkinEnabled ? '1' : '0';
+                        }
+                        if (nextEl) {
+                            nextEl.style.opacity = editorState.onionSkinEnabled ? '1' : '0';
+                        }
+                        
+                        console.log('Onion skinning:', editorState.onionSkinEnabled ? 'ON' : 'OFF');
+                        updatePreview();
+                        break;
+                }
+            });
+            
+            document.addEventListener('keyup', (e) => {
+                if (e.key === 'Shift') {
+                    editorState.placementMode = 'add';
+                }
+            });
         }
 
         // Update frame UI
@@ -1485,6 +2242,7 @@
                 editorState.voxelData[editorState.currentFrame][z][y][x] = color;
                 updateStats();
                 updatePreview();
+                triggerAutoSave();
             }
         }
 
@@ -1500,6 +2258,7 @@
                 editorState.voxelData[editorState.currentFrame][z][y][x] = { h: 0, s: 0, b: 0, a: 0 };
                 updateStats();
                 updatePreview();
+                triggerAutoSave();
             }
         }
 
@@ -1539,6 +2298,7 @@
 
             updateStats();
             updatePreview();
+            triggerAutoSave();
         }
 
         function generateCube(cx, cy, cz, size, filled, color) {
@@ -1732,10 +2492,46 @@
             editorState.currentFrame = Math.max(0, Math.min(frameIndex, editorState.frameCount - 1));
             updateStats();
             updateFrameUI();
-            if (player) {
+            
+            // If onion skinning is enabled, regenerate data to update ghosts
+            if (editorState.onionSkinEnabled) {
+                updatePreview();
+            } else if (player) {
                 player.currentFrame = editorState.currentFrame;
                 player.render();
             }
+        }
+
+        function addFrame() {
+            if (editorState.frameCount >= 100) {
+                alert('Maximum frame count reached');
+                return;
+            }
+
+            // Create empty frame with all voxels transparent
+            const emptyFrame = [];
+            for (let z = 0; z < editorState.depth; z++) {
+                const plane = [];
+                for (let y = 0; y < editorState.height; y++) {
+                    const row = [];
+                    for (let x = 0; x < editorState.width; x++) {
+                        row.push({ h: 0, s: 0, b: 0, a: 0 });
+                    }
+                    plane.push(row);
+                }
+                emptyFrame.push(plane);
+            }
+            
+            // Insert after current frame
+            editorState.voxelData.splice(editorState.currentFrame + 1, 0, emptyFrame);
+            editorState.frameCount++;
+            editorState.currentFrame++;
+            
+            document.getElementById('frameCount').value = editorState.frameCount;
+            updateStats();
+            updateFrameUI();
+            updatePreview();
+            triggerAutoSave();
         }
 
         function duplicateFrame() {
@@ -1753,6 +2549,7 @@
             updateStats();
             updateFrameUI();
             updatePreview();
+            triggerAutoSave();
         }
 
         function deleteFrame() {
@@ -1769,6 +2566,7 @@
             updateStats();
             updateFrameUI();
             updatePreview();
+            triggerAutoSave();
         }
 
         // Event listeners
@@ -1782,7 +2580,6 @@
 
         // Auto-save settings
         document.getElementById('autoSaveEnabled').addEventListener('change', saveSettings);
-        document.getElementById('autoSaveInterval').addEventListener('change', saveSettings);
 
         // Color picker slider and input sync
         document.getElementById('colorHue').addEventListener('input', updateColorPreview);
@@ -1824,6 +2621,7 @@
             goToFrame(editorState.currentFrame + 1);
         });
 
+        document.getElementById('addFrame').addEventListener('click', addFrame);
         document.getElementById('duplicateFrame').addEventListener('click', duplicateFrame);
         document.getElementById('deleteFrame').addEventListener('click', deleteFrame);
 
@@ -1840,6 +2638,7 @@
             if (player) {
                 player.viewRotationX = parseFloat(e.target.value);
                 player.render();
+                drawAxisIndicator();
             }
         });
 
@@ -1847,6 +2646,7 @@
             if (player) {
                 player.viewRotationY = parseFloat(e.target.value);
                 player.render();
+                drawAxisIndicator();
             }
         });
 
@@ -1910,29 +2710,52 @@
 
         // Sync voxel position sliders with number inputs
         document.getElementById('voxelXSlider').addEventListener('input', (e) => {
-            document.getElementById('voxelX').value = e.target.value;
+            const value = parseInt(e.target.value);
+            document.getElementById('voxelX').value = value;
+            editorState.cursorPosition.x = value;
+            updateCursorDisplay();
+            throttledPreviewUpdate();
         });
         document.getElementById('voxelYSlider').addEventListener('input', (e) => {
-            document.getElementById('voxelY').value = e.target.value;
+            const value = parseInt(e.target.value);
+            document.getElementById('voxelY').value = value;
+            editorState.cursorPosition.y = value;
+            updateCursorDisplay();
+            throttledPreviewUpdate();
         });
         document.getElementById('voxelZSlider').addEventListener('input', (e) => {
-            document.getElementById('voxelZ').value = e.target.value;
+            const value = parseInt(e.target.value);
+            document.getElementById('voxelZ').value = value;
+            editorState.cursorPosition.z = value;
+            updateCursorDisplay();
+            throttledPreviewUpdate();
         });
 
         document.getElementById('voxelX').addEventListener('input', (e) => {
-            document.getElementById('voxelXSlider').value = e.target.value;
+            const value = parseInt(e.target.value);
+            document.getElementById('voxelXSlider').value = value;
+            editorState.cursorPosition.x = value;
+            updateCursorDisplay();
+            throttledPreviewUpdate();
         });
         document.getElementById('voxelY').addEventListener('input', (e) => {
-            document.getElementById('voxelYSlider').value = e.target.value;
+            const value = parseInt(e.target.value);
+            document.getElementById('voxelYSlider').value = value;
+            editorState.cursorPosition.y = value;
+            updateCursorDisplay();
+            throttledPreviewUpdate();
         });
         document.getElementById('voxelZ').addEventListener('input', (e) => {
-            document.getElementById('voxelZSlider').value = e.target.value;
+            const value = parseInt(e.target.value);
+            document.getElementById('voxelZSlider').value = value;
+            editorState.cursorPosition.z = value;
+            updateCursorDisplay();
+            throttledPreviewUpdate();
         });
 
         // Initialize on load
         const settings = loadSettings();
         document.getElementById('autoSaveEnabled').checked = settings.autoSaveEnabled;
-        document.getElementById('autoSaveInterval').value = settings.autoSaveInterval;
         
         // Try to load last project, otherwise init new one
         if (!loadLastProject()) {
@@ -1945,6 +2768,8 @@
         updateSavedProjectsList();
         document.getElementById('shapeType').dispatchEvent(new Event('change'));
         setupAutoSave();
+        setupInteractiveCanvas();
+        updateCursorDisplay();
     </script>
 </body>
 </html>

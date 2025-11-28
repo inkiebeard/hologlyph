@@ -60,6 +60,8 @@
             margin-bottom: 1rem;
         }
     </style>
+    <!-- GIF.js library for GIF export -->
+    <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
 </head>
 <body>
     <section class="section">
@@ -98,6 +100,9 @@
                                 <button class="button is-info" id="exportBtn">
                                     <span>💾 Export .glyf</span>
                                 </button>
+                                <button class="button is-link" id="exportGifBtn">
+                                    <span>🎬 Export GIF</span>
+                                </button>
                             </div>
                             
                             <div class="field">
@@ -116,6 +121,35 @@
                                 </label>
                                 <p class="help">Reduces file size for animations with repeated colors or empty space</p>
                             </div>
+                            
+                            <div class="field">
+                                <label class="label">GIF Export Options</label>
+                                <div class="columns is-mobile">
+                                    <div class="column">
+                                        <label class="label is-small">Size (pixels)</label>
+                                        <div class="select is-fullwidth is-small">
+                                            <select id="gifSize">
+                                                <option value="256">256×256</option>
+                                                <option value="512" selected>512×512</option>
+                                                <option value="768">768×768</option>
+                                                <option value="1024">1024×1024</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="column">
+                                        <label class="label is-small">Quality</label>
+                                        <div class="select is-fullwidth is-small">
+                                            <select id="gifQuality">
+                                                <option value="20">Fast (lower quality)</option>
+                                                <option value="10" selected>Balanced</option>
+                                                <option value="5">High quality</option>
+                                                <option value="1">Best (slow)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p class="help">Higher quality = larger file size and longer export time</p>
+                            </div>
                         </div>
                         
                         <div class="notification is-info is-light mt-4">
@@ -129,7 +163,8 @@
                                • WebGL rendering with proper 3D cube voxels<br>
                                • Orbital camera (drag to rotate, scroll to zoom)<br>
                                • <strong>Drag & drop .glyf files</strong> to view your own animations<br>
-                               • Export button to save the animation (compressed by default)
+                               • Export as .glyf (compressed by default) or GIF<br>
+                               • Customizable GIF size and quality
                             </p>
                         </div>
                     </div>
@@ -315,6 +350,101 @@
                 exportToFile(uncompressedData, filename, false);
                 const sizeKB = (uncompressedData.length / 1024).toFixed(2);
                 alert(`Exported ${filename} (${sizeKB} KB)!\nCheck your downloads folder.`);
+            }
+        });
+
+        // GIF Export button
+        document.getElementById('exportGifBtn').addEventListener('click', async () => {
+            if (!player) {
+                alert('No animation loaded!');
+                return;
+            }
+
+            const gifBtn = document.getElementById('exportGifBtn');
+            const originalText = gifBtn.innerHTML;
+            gifBtn.innerHTML = '<span>⏳ Creating GIF...</span>';
+            gifBtn.disabled = true;
+
+            try {
+                // Get user settings
+                const gifSize = parseInt(document.getElementById('gifSize').value);
+                const gifQuality = parseInt(document.getElementById('gifQuality').value);
+
+                // Create a temporary canvas for rendering frames
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = gifSize;
+                tempCanvas.height = gifSize;
+
+                // Create GIF encoder
+                const gif = new GIF({
+                    workers: 2,
+                    quality: gifQuality,
+                    width: gifSize,
+                    height: gifSize,
+                    workerScript: 'https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js'
+                });
+
+                // Create temporary player for capturing frames
+                const tempPlayer = new HologlyphPlayer({
+                    canvas: tempCanvas,
+                    data: hologlyphData,
+                    autoPlay: false,
+                    useWebGL: true,
+                    orbitalDrag: false,
+                    initialRotationX: player.viewRotationX,
+                    initialRotationY: player.viewRotationY
+                });
+
+                const frameCount = tempPlayer.frameCount;
+                const frameDuration = tempPlayer.frameDurationMs;
+
+                // Capture each frame
+                for (let i = 0; i < frameCount; i++) {
+                    tempPlayer.currentFrame = i;
+                    tempPlayer.render();
+                    
+                    // Add frame to GIF
+                    gif.addFrame(tempCanvas, { delay: frameDuration, copy: true });
+                    
+                    // Update button text with progress
+                    const progress = Math.round((i + 1) / frameCount * 100);
+                    gifBtn.innerHTML = `<span>⏳ Creating GIF... ${progress}%</span>`;
+                }
+
+                // Clean up temp player
+                tempPlayer.destroy();
+
+                // Render GIF
+                gif.on('finished', (blob) => {
+                    // Download the GIF
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'hologlyph-animation.gif';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+
+                    const sizeKB = (blob.size / 1024).toFixed(2);
+                    alert(`GIF exported! (${sizeKB} KB)\nCheck your downloads folder.`);
+
+                    gifBtn.innerHTML = originalText;
+                    gifBtn.disabled = false;
+                });
+
+                gif.on('progress', (p) => {
+                    const percent = Math.round(p * 100);
+                    gifBtn.innerHTML = `<span>⏳ Encoding GIF... ${percent}%</span>`;
+                });
+
+                gif.render();
+
+            } catch (error) {
+                console.error('GIF export error:', error);
+                alert('Failed to export GIF: ' + error.message);
+                gifBtn.innerHTML = originalText;
+                gifBtn.disabled = false;
             }
         });
 
