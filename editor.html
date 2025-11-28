@@ -85,7 +85,7 @@
         
         .panel-container {
             width: 340px;
-            overflow-y: hidden;
+            overflow-y: auto; /* Allow scrolling when panels are too tall */
             overflow-x: hidden;
             background: #0f0f1e;
             display: flex;
@@ -200,10 +200,12 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            min-height: 0; /* Important for flexbox to work properly */
         }
         
         .canvas-container {
             flex: 1;
+            min-height: 0; /* Allows container to shrink below content size */
             background: #1a1a2e;
             display: flex;
             justify-content: center;
@@ -269,6 +271,7 @@
             padding: 1rem 1.5rem;
             border-top: 1px solid #2a2a3e;
             color: #fff;
+            flex-shrink: 0; /* Prevent bottom panel from shrinking */
         }
         
         .field label.label {
@@ -715,7 +718,8 @@
                             • <strong>Q/E</strong> down/up | <strong>Space</strong> place<br>
                             • <strong>Drag</strong> rotate | <strong>Shift+Drag</strong> pan<br>
                             • <strong>Wheel</strong> zoom | <strong>R</strong> reset pan<br>
-                            • <strong>O</strong> toggle onion skin (blue=past, red=future)
+                            • <strong>O</strong> toggle onion skin (blue=past, red=future)<br>
+                            • <strong>G</strong> toggle bounding box grid
                         </p>
                     </div>
                     
@@ -933,6 +937,7 @@
                                 <span style="color: #4444ff; opacity: 0;" id="onionSkinPrev">(← blue)</span>
                                 <span style="color: #ff4444; opacity: 0;" id="onionSkinNext">(red →)</span>
                             </span>
+                            <span class="ml-3" style="color: #44ff44; font-size: 0.85rem;" id="boundingBoxIndicator">Grid: ON</span>
                         </div>
                     </div>
                     <div class="level-right">
@@ -956,7 +961,7 @@
                 
                 <div class="help has-text-centered mt-2" style="color: #8b8b9e; font-size: 0.85rem;">
                     💡 <strong>Interactive Controls:</strong> Point & click to place | Right-click to remove | 
-                    WASD/QE: Move cursor | Drag: Rotate | Shift+Drag: Pan | Wheel: Zoom | R: Reset pan | O: Toggle onion skin
+                    WASD/QE: Move cursor | Drag: Rotate | Shift+Drag: Pan | Wheel: Zoom | R: Reset pan | O: Toggle onion skin | G: Toggle grid
                 </div>
             </div>
         </div>
@@ -979,6 +984,9 @@
                     panel.classList.add('active');
                     btn.classList.add('active');
                 }
+                
+                // Save panel state after toggling
+                savePanelState();
             });
         });
 
@@ -991,6 +999,9 @@
                 
                 panel.classList.remove('active');
                 toolButton.classList.remove('active');
+                
+                // Save panel state after closing
+                savePanelState();
             });
         });
 
@@ -1039,6 +1050,9 @@
                     isResizing = false;
                     currentPanel = null;
                     document.body.style.cursor = '';
+                    
+                    // Save panel state after resizing
+                    savePanelState();
                 }
             });
         });
@@ -1064,6 +1078,8 @@
             // Onion skinning
             onionSkinEnabled: false,
             onionSkinFrames: 3, // Number of frames to show in each direction
+            // Bounding box grid
+            boundingBoxVisible: true, // Show bounding box grid by default in editor
         };
 
         let player = null;
@@ -1073,7 +1089,8 @@
         const STORAGE_KEYS = {
             PROJECTS: 'hologlyph_projects',
             CURRENT_PROJECT: 'hologlyph_current_project',
-            SETTINGS: 'hologlyph_settings'
+            SETTINGS: 'hologlyph_settings',
+            PANEL_STATE: 'hologlyph_panel_state'
         };
 
         // Load user settings
@@ -1091,6 +1108,46 @@
             };
             localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
             setupAutoSave();
+        }
+        
+        // Save panel state (open/closed, heights)
+        function savePanelState() {
+            const panelState = {};
+            document.querySelectorAll('.panel').forEach(panel => {
+                const panelName = panel.id.replace('-panel', '');
+                panelState[panelName] = {
+                    open: panel.classList.contains('active'),
+                    height: parseInt(panel.style.height) || 0
+                };
+            });
+            localStorage.setItem(STORAGE_KEYS.PANEL_STATE, JSON.stringify(panelState));
+        }
+        
+        // Load panel state
+        function loadPanelState() {
+            const panelState = JSON.parse(localStorage.getItem(STORAGE_KEYS.PANEL_STATE) || '{}');
+            
+            Object.keys(panelState).forEach(panelName => {
+                const panel = document.getElementById(panelName + '-panel');
+                const toolButton = document.querySelector(`.tool-button[data-panel="${panelName}"]`);
+                const state = panelState[panelName];
+                
+                if (panel && toolButton && state) {
+                    // Restore open/closed state
+                    if (state.open) {
+                        panel.classList.add('active');
+                        toolButton.classList.add('active');
+                    } else {
+                        panel.classList.remove('active');
+                        toolButton.classList.remove('active');
+                    }
+                    
+                    // Restore height
+                    if (state.height > 0) {
+                        panel.style.height = state.height + 'px';
+                    }
+                }
+            });
         }
 
         // Get all saved projects
@@ -1349,7 +1406,8 @@
                 voxelSize: 8,
                 orbitalDrag: false, // We'll handle dragging ourselves to support pan
                 useWebGL: true,
-                showGrid: false, // Disabled for cleaner editing experience
+                showGrid: false, // Old per-voxel grid (disabled)
+                showBoundingBox: editorState.boundingBoxVisible, // Toggleable bounding box grid
                 initialRotationX: rotX,
                 initialRotationY: rotY
             });
@@ -2007,6 +2065,21 @@
                         }
                         
                         console.log('Onion skinning:', editorState.onionSkinEnabled ? 'ON' : 'OFF');
+                        updatePreview();
+                        break;
+                    case 'g':
+                        // Toggle bounding box grid
+                        e.preventDefault();
+                        editorState.boundingBoxVisible = !editorState.boundingBoxVisible;
+                        
+                        // Update indicator
+                        const gridIndicator = document.getElementById('boundingBoxIndicator');
+                        if (gridIndicator) {
+                            gridIndicator.textContent = `Grid: ${editorState.boundingBoxVisible ? 'ON' : 'OFF'}`;
+                            gridIndicator.style.color = editorState.boundingBoxVisible ? '#44ff44' : '#8b8b9e';
+                        }
+                        
+                        console.log('Bounding box grid:', editorState.boundingBoxVisible ? 'ON' : 'OFF');
                         updatePreview();
                         break;
                 }
@@ -2756,6 +2829,9 @@
         // Initialize on load
         const settings = loadSettings();
         document.getElementById('autoSaveEnabled').checked = settings.autoSaveEnabled;
+        
+        // Load saved panel state
+        loadPanelState();
         
         // Try to load last project, otherwise init new one
         if (!loadLastProject()) {

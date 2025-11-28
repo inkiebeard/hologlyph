@@ -81,6 +81,12 @@ export const COMPRESSION_TYPE = {
 
 const MAX_RLE_RUN = 255; // Maximum run length for RLE
 
+// Grid rendering constants
+const GRID_COLOR_R = 0.4; // Red component (0-1)
+const GRID_COLOR_G = 0.4; // Green component (0-1)
+const GRID_COLOR_B = 0.5; // Blue component (0-1)
+const GRID_COLOR_A = 0.3; // Alpha component (0-1)
+
 export function createHologlyphHeader(options = {}) {
   const {
     width = 32,
@@ -463,21 +469,30 @@ function hsbToRgba(h, s, b, aPercent) {
 // -----------------------------
 // Hologlyph Player (Canvas Renderer)
 // -----------------------------
+/**
+ * HologlyphPlayer - Render and play .glyf voxel animations
+ * 
+ * @param {Object} options - Configuration options
+ * @param {HTMLCanvasElement} options.canvas - Canvas element to render to
+ * @param {Uint8Array} options.data - Hologlyph data buffer
+ * @param {Function} [options.dataGenerator=null] - Optional function to generate data dynamically
+ * @param {boolean} [options.autoPlay=true] - Start playing immediately
+ * @param {number} [options.voxelSize=8] - Size of each voxel in pixels
+ * @param {boolean} [options.orbitalDrag=false] - Enable mouse drag to rotate camera
+ * @param {boolean} [options.useWebGL=false] - Use WebGL renderer (falls back to 2D)
+ * @param {boolean} [options.showGrid=false] - Show per-voxel wireframe grid (deprecated)
+ * @param {boolean} [options.showBoundingBox=false] - Show dynamic bounding box grid
+ * @param {number} [options.initialRotationX=0.3] - Initial camera rotation X (radians)
+ * @param {number} [options.initialRotationY=0.6] - Initial camera rotation Y (radians)
+ */
 export class HologlyphPlayer {
-  constructor({ canvas, data, dataGenerator = null, autoPlay = true, voxelSize = 8, orbitalDrag = false, useWebGL = false, showGrid = false, initialRotationX = 0.3, initialRotationY = 0.6 }) {
+  constructor({ canvas, data, dataGenerator = null, autoPlay = true, voxelSize = 8, orbitalDrag = false, useWebGL = false, showGrid = false, showBoundingBox = false, initialRotationX = 0.3, initialRotationY = 0.6 }) {
     if (!canvas) throw new Error("HologlyphPlayer needs a canvas");
     this.canvas = canvas;
     this.useWebGL = useWebGL;
     this.showGrid = showGrid;
+    this.showBoundingBox = showBoundingBox;
     
-    if (useWebGL) {
-      this.gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
-      if (!this.gl) throw new Error("WebGL not supported");
-      this._initWebGL();
-    } else {
-      this.ctx = canvas.getContext("2d");
-    }
-
     // Convert to Uint8Array and decompress if needed
     let rawData = data instanceof Uint8Array ? data : new Uint8Array(data);
     const tempHeader = parseHologlyphHeader(rawData);
@@ -495,6 +510,15 @@ export class HologlyphPlayer {
     this.width = this.header.width;
     this.height = this.header.height;
     this.depth = this.header.depth;
+    
+    // Initialize rendering AFTER dimensions are set
+    if (useWebGL) {
+      this.gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+      if (!this.gl) throw new Error("WebGL not supported");
+      this._initWebGL();
+    } else {
+      this.ctx = canvas.getContext("2d");
+    }
     this.frameCount = this.header.frameCount;
     this.frameSizeBytes = this.header.frameSizeBytes;
     this.dataOffset = this.header.dataOffset;
@@ -761,7 +785,7 @@ export class HologlyphPlayer {
     this._createCubeGeometry();
     
     // Create grid geometry if needed
-    if (this.showGrid) {
+    if (this.showGrid || this.showBoundingBox) {
       this._createGridGeometry();
     }
     
@@ -877,6 +901,93 @@ export class HologlyphPlayer {
     gl.bufferData(gl.ARRAY_BUFFER, lines, gl.STATIC_DRAW);
     
     this.gridLineCount = lines.length / 3;
+    
+    // Create bounding box face grids for back-face rendering
+    this._createBoundingBoxGeometry();
+  }
+  
+  _createBoundingBoxGeometry() {
+    const gl = this.gl;
+    const { width, height, depth } = this;
+    
+    const GRID_DIVISIONS_X = width;
+    const GRID_DIVISIONS_Y = height;
+    const GRID_DIVISIONS_Z = depth;
+    
+    // Store geometry for each face of the bounding box
+    this.boundingBoxFaces = {
+      // Front face (Z = depth/2)
+      front: this._createFaceGrid(GRID_DIVISIONS_X, GRID_DIVISIONS_Y, 'xy', depth / 2),
+      // Back face (Z = -depth/2)
+      back: this._createFaceGrid(GRID_DIVISIONS_X, GRID_DIVISIONS_Y, 'xy', -depth / 2),
+      // Right face (X = width/2)
+      right: this._createFaceGrid(GRID_DIVISIONS_Z, GRID_DIVISIONS_Y, 'zy', width / 2),
+      // Left face (X = -width/2)
+      left: this._createFaceGrid(GRID_DIVISIONS_Z, GRID_DIVISIONS_Y, 'zy', -width / 2),
+      // Top face (Y = height/2)
+      top: this._createFaceGrid(GRID_DIVISIONS_X, GRID_DIVISIONS_Z, 'xz', height / 2),
+      // Bottom face (Y = -height/2)
+      bottom: this._createFaceGrid(GRID_DIVISIONS_X, GRID_DIVISIONS_Z, 'xz', -height / 2),
+    };
+  }
+  
+  _createFaceGrid(divisionsU, divisionsV, plane, offset) {
+    const gl = this.gl;
+    const lines = [];
+    
+    const { width, height, depth } = this;
+    const halfWidth = width / 2;
+    const halfHeight = height / 2;
+    const halfDepth = depth / 2;
+    
+    // Generate grid lines based on plane orientation
+    if (plane === 'xy') {
+      // Front/Back face (perpendicular to Z)
+      // Horizontal lines (parallel to X)
+      for (let i = 0; i <= divisionsV; i++) {
+        const y = -halfHeight + (i * height / divisionsV);
+        lines.push(-halfWidth, y, offset, halfWidth, y, offset);
+      }
+      // Vertical lines (parallel to Y)
+      for (let i = 0; i <= divisionsU; i++) {
+        const x = -halfWidth + (i * width / divisionsU);
+        lines.push(x, -halfHeight, offset, x, halfHeight, offset);
+      }
+    } else if (plane === 'zy') {
+      // Left/Right face (perpendicular to X)
+      // Horizontal lines (parallel to Z)
+      for (let i = 0; i <= divisionsV; i++) {
+        const y = -halfHeight + (i * height / divisionsV);
+        lines.push(offset, y, -halfDepth, offset, y, halfDepth);
+      }
+      // Vertical lines (parallel to Y)
+      for (let i = 0; i <= divisionsU; i++) {
+        const z = -halfDepth + (i * depth / divisionsU);
+        lines.push(offset, -halfHeight, z, offset, halfHeight, z);
+      }
+    } else if (plane === 'xz') {
+      // Top/Bottom face (perpendicular to Y)
+      // Horizontal lines (parallel to X)
+      for (let i = 0; i <= divisionsV; i++) {
+        const z = -halfDepth + (i * depth / divisionsV);
+        lines.push(-halfWidth, offset, z, halfWidth, offset, z);
+      }
+      // Vertical lines (parallel to Z)
+      for (let i = 0; i <= divisionsU; i++) {
+        const x = -halfWidth + (i * width / divisionsU);
+        lines.push(x, offset, -halfDepth, x, offset, halfDepth);
+      }
+    }
+    
+    const vertexData = new Float32Array(lines);
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
+    
+    return {
+      buffer: buffer,
+      vertexCount: vertexData.length / 3
+    };
   }
 
   destroy() {
@@ -1005,38 +1116,75 @@ export class HologlyphPlayer {
 
   _renderGrid() {
     const gl = this.gl;
-    const { width, height, depth } = this;
+    
+    // Safety check: ensure bounding box geometry exists
+    if (!this.boundingBoxFaces) {
+      console.warn('Bounding box geometry not initialized');
+      return;
+    }
+
+    // Calculate camera view direction from rotation
+    const rotX = this.viewRotationX;
+    const rotY = this.viewRotationY;
+    
+    // Calculate view direction vector (where camera is looking from camera position)
+    const viewDirX = Math.sin(rotY) * Math.cos(rotX);
+    const viewDirY = -Math.sin(rotX);
+    const viewDirZ = -Math.cos(rotY) * Math.cos(rotX);
+    
+    // Determine which 3 faces to render (back faces only - furthest from camera)
+    // This creates a bounding box that shows the grid bounds without visual clutter
+    const facesToRender = [];
+    
+    // X axis faces (left/right) - show the face furthest from camera
+    if (viewDirX > 0) {
+      facesToRender.push('left');  // Show left when looking right
+    } else {
+      facesToRender.push('right'); // Show right when looking left
+    }
+    
+    // Y axis faces (top/bottom) - show the face furthest from camera
+    if (viewDirY > 0) {
+      facesToRender.push('top');    // Show top when looking up
+    } else {
+      facesToRender.push('bottom'); // Show bottom when looking down
+    }
+    
+    // Z axis faces (front/back) - show the face furthest from camera
+    if (viewDirZ > 0) {
+      facesToRender.push('front'); // Show front when looking away
+    } else {
+      facesToRender.push('back');  // Show back when looking toward
+    }
 
     // Disable depth writing for transparent grid (but keep depth testing)
     gl.depthMask(false);
 
-    // Bind grid line geometry
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.gridBuffer);
+    // Setup attributes for grid rendering
     gl.enableVertexAttribArray(this.attribLocations.position);
-    gl.vertexAttribPointer(this.attribLocations.position, 3, gl.FLOAT, false, 0, 0);
-
-    // Disable normals for grid lines
     gl.disableVertexAttribArray(this.attribLocations.normal);
     gl.vertexAttrib3f(this.attribLocations.normal, 0, 1, 0);
-
-    // Set grid color (very subtle gray with low alpha)
     gl.disableVertexAttribArray(this.attribLocations.color);
-    gl.vertexAttrib4f(this.attribLocations.color, 0.3, 0.3, 0.4, 0.05);
+    gl.vertexAttrib4f(this.attribLocations.color, GRID_COLOR_R, GRID_COLOR_G, GRID_COLOR_B, GRID_COLOR_A);
 
-    // Render grid for each voxel position
-    for (let z = 0; z < depth; z++) {
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const modelMatrix = this._createModelMatrix(
-            x - width / 2,
-            y - height / 2,
-            z - depth / 2
-          );
-          gl.uniformMatrix4fv(this.uniformLocations.modelMatrix, false, modelMatrix);
-          gl.drawArrays(gl.LINES, 0, this.gridLineCount);
-        }
+    // Identity model matrix (faces are already positioned)
+    const identityMatrix = new Float32Array([
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 1, 0,
+      0, 0, 0, 1
+    ]);
+    gl.uniformMatrix4fv(this.uniformLocations.modelMatrix, false, identityMatrix);
+
+    // Render each back face
+    facesToRender.forEach(faceName => {
+      const face = this.boundingBoxFaces[faceName];
+      if (face) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, face.buffer);
+        gl.vertexAttribPointer(this.attribLocations.position, 3, gl.FLOAT, false, 0, 0);
+        gl.drawArrays(gl.LINES, 0, face.vertexCount);
       }
-    }
+    });
 
     // Re-enable depth writing
     gl.depthMask(true);
@@ -1124,8 +1272,8 @@ export class HologlyphPlayer {
       }
     }
     
-    // Draw grid wireframes AFTER solid voxels for proper depth ordering
-    if (this.showGrid) {
+    // Draw bounding box grid AFTER solid voxels for proper depth ordering
+    if (this.showBoundingBox) {
       this._renderGrid();
     }
   }
