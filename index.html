@@ -185,7 +185,7 @@
             const frameCount = 60;
             const frameDurationMs = 50;
             
-            const header = createHologlyphHeader({
+            const { header, totalSize } = createHologlyphHeader({
                 width,
                 height,
                 depth,
@@ -196,9 +196,6 @@
                 bytesPerVoxel: 4,
             });
             
-            const voxelsPerFrame = width * height * depth;
-            const bytesPerFrame = voxelsPerFrame * 4;
-            const totalSize = header.length + (bytesPerFrame * frameCount);
             const buffer = new Uint8Array(totalSize);
             
             // Copy header

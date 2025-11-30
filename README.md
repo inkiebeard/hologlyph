@@ -8,7 +8,7 @@ Hologlyph is designed to make **tiny holographic voxel animations** as easy to u
 
 ### Core Features
 
-- **WebGL Rendering**: Proper 3D cube voxels with lighting and depth testing
+- **WebGL Rendering** (default): Proper 3D cube voxels with lighting and depth testing, with automatic 2D fallback
 - **HSBA Color Model**: Intuitive Hue-Saturation-Brightness-Alpha color space (0-255 for H, 0-100% for S/B/A)
 - **Animation Support**: Multi-frame animations with configurable duration and looping
 - **Orbital Camera**: Drag to rotate, mouse wheel to zoom, pinch to zoom on touch devices
@@ -42,13 +42,12 @@ import { HologlyphPlayer } from './hologlyph.js';
 const response = await fetch('myanimation.glyf');
 const data = await response.arrayBuffer();
 
-// Create player with WebGL
+// Create player (WebGL is default)
 const canvas = document.getElementById('myCanvas');
 const player = new HologlyphPlayer({
     canvas,
     data,
     autoPlay: true,
-    useWebGL: true,
     orbitalDrag: true,
     initialRotationX: 0.3,
     initialRotationY: 0.6
@@ -71,12 +70,12 @@ const player = new HologlyphPlayer({
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `canvas` | HTMLCanvasElement | *required* | Canvas element to render to |
-| `data` | Uint8Array/ArrayBuffer | *required* | Hologlyph binary data |
-| `dataGenerator` | Function | `null` | Function to regenerate data with view rotation (for 2D mode) |
+| `data` | Uint8Array/ArrayBuffer | *required* | Hologlyph binary data (can be omitted if dataGenerator provided) |
+| `dataGenerator` | Function | `null` | Function to generate data dynamically (allows omitting data; regenerates on rotation in 2D mode) |
 | `autoPlay` | Boolean | `true` | Start playing immediately |
 | `voxelSize` | Number | `8` | Size of each voxel in pixels (2D mode only) |
 | `orbitalDrag` | Boolean | `false` | Enable drag-to-orbit camera |
-| `useWebGL` | Boolean | `false` | Use WebGL renderer (recommended) |
+| `useWebGL` | Boolean | `true` | Use WebGL renderer (default, falls back to 2D if unavailable) |
 | `showGrid` | Boolean | `false` | Show wireframe grid (editor mode) |
 | `initialRotationX` | Number | `0.3` | Initial camera X rotation (radians) |
 | `initialRotationY` | Number | `0.6` | Initial camera Y rotation (radians) |
@@ -130,8 +129,12 @@ Create a binary header for a `.glyf` file.
 - `loopStartFrame` - Frame to loop back to (default: 0)
 - `bytesPerVoxel` - Bytes per voxel (default: 4)
 - `colorModel` - Color model (default: HSBA_255_100)
+- `compressionType` - Compression type (default: NONE)
 
-**Returns:** `Uint8Array` header (28 bytes)
+**Returns:** Object with:
+- `header` - `Uint8Array` header (28 bytes)
+- `totalSize` - Total file size in bytes (header + voxel data)
+- `frameSizeBytes` - Size of a single frame's voxel data in bytes
 
 #### `parseHologlyphHeader(data)`
 
@@ -212,8 +215,8 @@ Following the 28-byte header, voxel data is stored sequentially:
 ```javascript
 import { createHologlyphHeader, HSBAUtil } from './hologlyph.js';
 
-// Create header
-const header = createHologlyphHeader({
+// Create header (returns object with header, totalSize, and frameSizeBytes)
+const { header, totalSize, frameSizeBytes } = createHologlyphHeader({
     width: 16,
     height: 16,
     depth: 16,
@@ -222,10 +225,7 @@ const header = createHologlyphHeader({
     loop: true,
 });
 
-// Allocate buffer
-const voxelsPerFrame = 16 * 16 * 16;
-const bytesPerFrame = voxelsPerFrame * 4;
-const totalSize = header.length + (bytesPerFrame * 10);
+// Allocate buffer using totalSize from header
 const buffer = new Uint8Array(totalSize);
 
 // Copy header
@@ -251,19 +251,17 @@ for (let frame = 0; frame < 10; frame++) {
     }
 }
 
-// Use with player
+// Use with player (WebGL is default)
 const player = new HologlyphPlayer({
     canvas: myCanvas,
-    data: buffer,
-    useWebGL: true
+    data: buffer
 });
 ```
 
 ## Browser Requirements
 
 - **Modern browser** with ES6 module support
-- **WebGL support** (for 3D rendering mode)
-- **Canvas 2D support** (for fallback mode)
+- **WebGL support** (required for default 3D rendering, falls back to Canvas 2D if unavailable)
 - **LocalStorage** (for editor project saving)
 
 ## Design Philosophy
@@ -291,7 +289,7 @@ const player = new HologlyphPlayer({
 
 ## Performance Tips
 
-- Use **WebGL mode** for better performance and visual quality
+- **WebGL is the default** rendering mode for optimal performance and visual quality (automatically falls back to 2D if WebGL is unavailable)
 - Keep grid sizes reasonable for web (16×16×16 is ideal, 32×32×32 is maximum)
 - Use **filled: false** in shape generator for hollow shapes (fewer voxels)
 - Monitor file size in the Stats panel

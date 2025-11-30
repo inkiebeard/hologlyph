@@ -24,6 +24,11 @@
 - **RULE:** Document units (pixels, radians, milliseconds, percentages)
 - **WHY:** Code must be self-documenting and maintainable
 
+### 4. **Only one canvas is allowed**
+- **RULE:** Only one canvas is allowed in the DOM
+- **RULE:** The canvas must be the only child of the parent element
+- **WHY:** This is to ensure that the canvas is the only element that can be used to render the animation
+
 ```javascript
 // ❌ BAD
 if (rotation > 1.57) { ... }
@@ -799,7 +804,10 @@ function autoSave() {
  * @param {number} [options.frameCount=1] - Number of frames
  * @param {number} [options.frameDurationMs=100] - Frame duration in milliseconds
  * @param {boolean} [options.loop=true] - Whether animation loops
- * @returns {Uint8Array} 28-byte header buffer
+ * @returns {Object} Object with {header, totalSize, frameSizeBytes}
+ * @returns {Uint8Array} returns.header - 28-byte header buffer
+ * @returns {number} returns.totalSize - Total file size in bytes
+ * @returns {number} returns.frameSizeBytes - Size of single frame's voxel data in bytes
  */
 export function createHologlyphHeader(options = {}) {
   // ...

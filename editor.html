@@ -512,6 +512,9 @@
                 <button class="tool-button" data-panel="stats">
                     📊<span>Stats</span>
                 </button>
+                <button class="tool-button" data-panel="image">
+                    🖼️<span>Image</span>
+                </button>
                 <button class="tool-button" data-panel="file">
                     💾<span>File</span>
                 </button>
@@ -532,15 +535,15 @@
                         <div class="columns is-mobile is-gapless">
                             <div class="column">
                                 <label class="label is-small">Width</label>
-                                <input class="input is-small" type="number" id="gridWidth" value="16" min="1" max="32">
+                                <input class="input is-small" type="number" id="gridWidth" value="64" min="1" max="255">
                             </div>
                             <div class="column ml-2">
                                 <label class="label is-small">Height</label>
-                                <input class="input is-small" type="number" id="gridHeight" value="16" min="1" max="32">
+                                <input class="input is-small" type="number" id="gridHeight" value="128" min="1" max="255">
                             </div>
                             <div class="column ml-2">
                                 <label class="label is-small">Depth</label>
-                                <input class="input is-small" type="number" id="gridDepth" value="16" min="1" max="32">
+                                <input class="input is-small" type="number" id="gridDepth" value="64" min="1" max="255">
                             </div>
                         </div>
                     </div>
@@ -819,6 +822,76 @@
                 </div>
                 <div class="panel-resize-handle" data-panel="stats"></div>
 
+                <!-- Image Import Panel -->
+                <div class="panel" id="image-panel" style="height: 400px;">
+                    <div class="panel-header">
+                        <h2>Trace Image</h2>
+                        <button class="panel-close" data-panel="image">✕</button>
+                    </div>
+                    <div class="panel-content">
+                    
+                    <div class="field">
+                        <label class="label">Import Reference Image</label>
+                        <div class="file is-fullwidth">
+                            <label class="file-label">
+                                <input class="file-input" type="file" id="importImage" accept="image/*">
+                                <span class="file-cta is-fullwidth">
+                                    <span class="file-icon">🖼️</span>
+                                    <span class="file-label">Choose Image...</span>
+                                </span>
+                            </label>
+                        </div>
+                        <p class="help mt-2">Upload an image to use as a tracing reference, or drag & drop onto the canvas</p>
+                    </div>
+
+                    <div class="field" id="imagePreviewContainer" style="display: none; margin-top: 1rem;">
+                        <label class="label">Image Preview</label>
+                        <div id="imagePreviewDropZone" style="border: 2px solid #4a5568; border-radius: 4px; padding: 8px; background: #1a1a2e; text-align: center; min-height: 100px; position: relative;">
+                            <img id="imagePreview" style="max-width: 100%; max-height: 150px; border-radius: 4px; display: none;" alt="Trace image preview">
+                            <p class="help mt-2" id="imagePreviewInfo">No image loaded</p>
+                            <div id="imagePreviewDropOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(102, 126, 234, 0.1); border: 2px dashed #667eea; border-radius: 4px; display: none; align-items: center; justify-content: center; pointer-events: none;">
+                                <span style="color: #667eea; font-weight: bold;">Drop image here</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="field" id="imageControls" style="display: none;">
+                        <label class="label">Image Controls</label>
+                        
+                        <div class="field">
+                            <label class="label is-small">Opacity</label>
+                            <input class="input" type="range" id="imageOpacity" min="0" max="100" value="50" step="5">
+                            <p class="help"><span id="imageOpacityValue">50</span>%</p>
+                        </div>
+
+                        <div class="field">
+                            <label class="label is-small">Scale</label>
+                            <input class="input" type="range" id="imageScale" min="25" max="200" value="100" step="5">
+                            <p class="help"><span id="imageScaleValue">100</span>%</p>
+                        </div>
+
+                        <div class="field">
+                            <label class="label is-small">Position X</label>
+                            <input class="input" type="range" id="imagePosX" min="-100" max="100" value="0" step="5">
+                            <p class="help"><span id="imagePosXValue">0</span>px</p>
+                        </div>
+
+                        <div class="field">
+                            <label class="label is-small">Position Y</label>
+                            <input class="input" type="range" id="imagePosY" min="-100" max="100" value="0" step="5">
+                            <p class="help"><span id="imagePosYValue">0</span>px</p>
+                        </div>
+
+                        <div class="buttons">
+                            <button class="button is-danger is-fullwidth" id="clearImage">
+                                🗑️ Clear Image
+                            </button>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+                <div class="panel-resize-handle" data-panel="image"></div>
+
                 <!-- File Operations Panel -->
                 <div class="panel" id="file-panel" style="height: 500px;">
                     <div class="panel-header">
@@ -885,8 +958,25 @@
 
         <!-- Main Content -->
         <div class="main-content">
-            <div class="canvas-container" style="position: relative;">
-                <canvas id="previewCanvas" width="800" height="800"></canvas>
+            <div class="canvas-container" id="canvasContainer" style="position: relative;">
+                <!-- Background image for tracing (not a canvas) -->
+                <img id="traceImage" style="position: absolute; top: 0; left: 0; z-index: 1; pointer-events: none; display: none; max-width: 800px; max-height: 800px;" alt="Trace reference">
+                <!-- Main preview canvas (WebGL) - only canvas allowed -->
+                <canvas id="previewCanvas" width="800" height="800" style="position: relative; z-index: 2;"></canvas>
+                <!-- Drag and drop overlay -->
+                <div id="dragDropOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; background: rgba(102, 126, 234, 0.2); border: 3px dashed #667eea; display: none; align-items: center; justify-content: center; pointer-events: none; transition: all 0.2s;">
+                    <div style="color: #fff; font-size: 24px; font-weight: bold; text-align: center;">
+                        <div style="font-size: 48px; margin-bottom: 10px;">📁</div>
+                        <div>Drop image here to trace</div>
+                    </div>
+                </div>
+                <!-- Drag and drop overlay - accepted state -->
+                <div id="dragDropOverlayAccepted" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; background: rgba(72, 199, 116, 0.3); border: 3px solid #48c774; display: none; align-items: center; justify-content: center; pointer-events: none; transition: all 0.2s;">
+                    <div style="color: #fff; font-size: 24px; font-weight: bold; text-align: center;">
+                        <div style="font-size: 48px; margin-bottom: 10px;">✅</div>
+                        <div>Release to import image</div>
+                    </div>
+                </div>
                 
                 <!-- Axis indicator overlay -->
                 <div class="axis-overlay">
@@ -1080,6 +1170,12 @@
             onionSkinFrames: 3, // Number of frames to show in each direction
             // Bounding box grid
             boundingBoxVisible: true, // Show bounding box grid by default in editor
+            // Trace image
+            traceImage: null, // Image object for tracing
+            traceImageOpacity: 50, // Opacity percentage (0-100)
+            traceImageScale: 100, // Scale percentage (25-200)
+            traceImagePosX: 0, // X offset in pixels
+            traceImagePosY: 0, // Y offset in pixels
         };
 
         let player = null;
@@ -1162,6 +1258,17 @@
             }
 
             const projects = getSavedProjects();
+            // Convert trace image to data URL for storage
+            let traceImageDataUrl = null;
+            if (editorState.traceImage) {
+                const canvas = document.createElement('canvas');
+                canvas.width = editorState.traceImage.width;
+                canvas.height = editorState.traceImage.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(editorState.traceImage, 0, 0);
+                traceImageDataUrl = canvas.toDataURL();
+            }
+            
             const projectData = {
                 name: projectName,
                 width: editorState.width,
@@ -1172,6 +1279,11 @@
                 loop: editorState.loop,
                 currentFrame: editorState.currentFrame,
                 voxelData: editorState.voxelData,
+                traceImageDataUrl: traceImageDataUrl,
+                traceImageOpacity: editorState.traceImageOpacity,
+                traceImageScale: editorState.traceImageScale,
+                traceImagePosX: editorState.traceImagePosX,
+                traceImagePosY: editorState.traceImagePosY,
                 lastSaved: new Date().toISOString()
             };
 
@@ -1209,6 +1321,39 @@
             editorState.voxelData = projectData.voxelData;
             editorState.projectName = projectData.name;
             editorState.lastSaved = projectData.lastSaved;
+            
+            // Restore trace image if available
+            if (projectData.traceImageDataUrl) {
+                const img = new Image();
+                img.onload = function() {
+                    editorState.traceImage = img;
+                    editorState.traceImageOpacity = projectData.traceImageOpacity || 50;
+                    editorState.traceImageScale = projectData.traceImageScale || 100;
+                    editorState.traceImagePosX = projectData.traceImagePosX || 0;
+                    editorState.traceImagePosY = projectData.traceImagePosY || 0;
+                    
+                    // Update UI controls
+                    document.getElementById('imageControls').style.display = 'block';
+                    document.getElementById('imagePreviewContainer').style.display = 'block';
+                    document.getElementById('imageOpacity').value = editorState.traceImageOpacity;
+                    document.getElementById('imageOpacityValue').textContent = editorState.traceImageOpacity;
+                    document.getElementById('imageScale').value = editorState.traceImageScale;
+                    document.getElementById('imageScaleValue').textContent = editorState.traceImageScale;
+                    document.getElementById('imagePosX').value = editorState.traceImagePosX;
+                    document.getElementById('imagePosXValue').textContent = editorState.traceImagePosX;
+                    document.getElementById('imagePosY').value = editorState.traceImagePosY;
+                    document.getElementById('imagePosYValue').textContent = editorState.traceImagePosY;
+                    
+                    // Update preview thumbnail
+                    updateImagePreview(img);
+                    
+                    renderTraceImage();
+                };
+                img.src = projectData.traceImageDataUrl;
+            } else {
+                editorState.traceImage = null;
+                document.getElementById('imageControls').style.display = 'none';
+            }
 
             // Update UI
             document.getElementById('gridWidth').value = projectData.width;
@@ -1409,7 +1554,12 @@
                 showGrid: false, // Old per-voxel grid (disabled)
                 showBoundingBox: editorState.boundingBoxVisible, // Toggleable bounding box grid
                 initialRotationX: rotX,
-                initialRotationY: rotY
+                initialRotationY: rotY,
+                traceImage: editorState.traceImage || null,
+                traceImageOpacity: (editorState.traceImageOpacity || 50) / 100,
+                traceImageScale: (editorState.traceImageScale || 100) / 100,
+                traceImagePosX: editorState.traceImagePosX || 0,
+                traceImagePosY: editorState.traceImagePosY || 0
             });
 
             player.zoomLevel = zoom;
@@ -1418,11 +1568,14 @@
             
             // Update axis indicator overlay
             drawAxisIndicator();
+            
+            // Re-render trace image (in case canvas was cleared)
+            renderTraceImage();
         }
         
         // Generate hologlyph data with optional cursor highlight and onion skinning
         function generateHologlyphDataWithCursor(skipCursor = false) {
-            const header = createHologlyphHeader({
+            const { header, totalSize } = createHologlyphHeader({
                 width: editorState.width,
                 height: editorState.height,
                 depth: editorState.depth,
@@ -1433,9 +1586,6 @@
                 bytesPerVoxel: 4,
             });
 
-            const voxelsPerFrame = editorState.width * editorState.height * editorState.depth;
-            const bytesPerFrame = voxelsPerFrame * 4;
-            const totalSize = header.length + (bytesPerFrame * editorState.frameCount);
             const buffer = new Uint8Array(totalSize);
 
             buffer.set(header, 0);
@@ -1654,9 +1804,182 @@
             });
         }
         
-        // Get voxel at mouse position using raycasting
+        // Matrix multiplication helper
+        function multiplyMatrixVector(matrix, vector) {
+            const result = [0, 0, 0, 0];
+            for (let i = 0; i < 4; i++) {
+                for (let j = 0; j < 4; j++) {
+                    result[i] += matrix[i * 4 + j] * vector[j];
+                }
+            }
+            return result;
+        }
+        
+        // Matrix inversion helper (for 4x4 matrices)
+        function invertMatrix(matrix) {
+            const inv = new Float32Array(16);
+            const m = matrix;
+            
+            inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] + m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+            inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] - m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+            inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] + m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+            inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] - m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+            
+            inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] - m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+            inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] + m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+            inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] - m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+            inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] + m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+            
+            inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+            inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] - m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+            inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] + m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+            inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] - m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+            
+            inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] - m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+            inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+            inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+            inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+            
+            let det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
+            if (det === 0) return null;
+            det = 1.0 / det;
+            
+            for (let i = 0; i < 16; i++) {
+                inv[i] *= det;
+            }
+            
+            return inv;
+        }
+        
+        // Create orthographic projection matrix (matching player's implementation)
+        function createOrthographicMatrix(left, right, bottom, top, near, far) {
+            const lr = 1 / (left - right);
+            const bt = 1 / (bottom - top);
+            const nf = 1 / (near - far);
+            
+            return new Float32Array([
+                -2 * lr, 0, 0, 0,
+                0, -2 * bt, 0, 0,
+                0, 0, 2 * nf, 0,
+                (left + right) * lr, (top + bottom) * bt, (far + near) * nf, 1
+            ]);
+        }
+        
+        // Create view matrix (matching player's implementation)
+        function createViewMatrix(rotX, rotY, distance) {
+            const cosX = Math.cos(rotX);
+            const sinX = Math.sin(rotX);
+            const cosY = Math.cos(rotY);
+            const sinY = Math.sin(rotY);
+            
+            const cx = distance * cosX * sinY;
+            const cy = distance * sinX;
+            const cz = distance * cosX * cosY;
+            
+            // Look at origin
+            const fx = -cx;
+            const fy = -cy;
+            const fz = -cz;
+            const len = Math.sqrt(fx * fx + fy * fy + fz * fz);
+            const fnx = fx / len;
+            const fny = fy / len;
+            const fnz = fz / len;
+            
+            const upX = 0, upY = 1, upZ = 0;
+            let rx = upY * fnz - upZ * fny;
+            let ry = upZ * fnx - upX * fnz;
+            let rz = upX * fny - upY * fnx;
+            const rlen = Math.sqrt(rx * rx + ry * ry + rz * rz);
+            rx /= rlen; ry /= rlen; rz /= rlen;
+            
+            const ux = fny * rz - fnz * ry;
+            const uy = fnz * rx - fnx * rz;
+            const uz = fnx * ry - fny * rx;
+            
+            return new Float32Array([
+                rx, ux, fnx, 0,
+                ry, uy, fny, 0,
+                rz, uz, fnz, 0,
+                -(rx * cx + ry * cy + rz * cz),
+                -(ux * cx + uy * cy + uz * cz),
+                -(fnx * cx + fny * cy + fnz * cz),
+                1
+            ]);
+        }
+        
+        // Unproject NDC to world space for orthographic projection
+        function unprojectOrthographic(ndcX, ndcY, viewMatrix, left, right, bottom, top, near, far) {
+            // Invert view matrix to transform from view space to world space
+            const viewInv = invertMatrix(viewMatrix);
+            if (!viewInv) return null;
+            
+            // For orthographic, unproject NDC directly to view space
+            // NDC to view space: x = (ndcX * (right - left) + (right + left)) / 2
+            const viewX = (ndcX * (right - left) + (right + left)) / 2;
+            const viewY = (ndcY * (top - bottom) + (top + bottom)) / 2;
+            
+            // Create two points in view space (near and far planes)
+            // Note: in view space, camera looks down -Z, so near is -near, far is -far
+            const nearView = [viewX, viewY, -near, 1];
+            const farView = [viewX, viewY, -far, 1];
+            
+            // Transform to world space
+            const nearWorld = multiplyMatrixVector(viewInv, nearView);
+            const farWorld = multiplyMatrixVector(viewInv, farView);
+            
+            // Normalize homogeneous coordinates
+            if (Math.abs(nearWorld[3]) > 0.0001) {
+                nearWorld[0] /= nearWorld[3];
+                nearWorld[1] /= nearWorld[3];
+                nearWorld[2] /= nearWorld[3];
+            }
+            if (Math.abs(farWorld[3]) > 0.0001) {
+                farWorld[0] /= farWorld[3];
+                farWorld[1] /= farWorld[3];
+                farWorld[2] /= farWorld[3];
+            }
+            
+            // Ray direction is from near to far
+            const dirX = farWorld[0] - nearWorld[0];
+            const dirY = farWorld[1] - nearWorld[1];
+            const dirZ = farWorld[2] - nearWorld[2];
+            const dirLen = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
+            
+            if (dirLen < 0.0001) return null;
+            
+            return {
+                origin: [nearWorld[0], nearWorld[1], nearWorld[2]],
+                direction: [dirX / dirLen, dirY / dirLen, dirZ / dirLen]
+            };
+        }
+        
+        // Ray-AABB intersection (for voxel cubes)
+        function rayIntersectAABB(rayOrigin, rayDir, boxMin, boxMax) {
+            const invDir = [
+                1 / rayDir[0],
+                1 / rayDir[1],
+                1 / rayDir[2]
+            ];
+            
+            const t1 = (boxMin[0] - rayOrigin[0]) * invDir[0];
+            const t2 = (boxMax[0] - rayOrigin[0]) * invDir[0];
+            const t3 = (boxMin[1] - rayOrigin[1]) * invDir[1];
+            const t4 = (boxMax[1] - rayOrigin[1]) * invDir[1];
+            const t5 = (boxMin[2] - rayOrigin[2]) * invDir[2];
+            const t6 = (boxMax[2] - rayOrigin[2]) * invDir[2];
+            
+            const tmin = Math.max(Math.max(Math.min(t1, t2), Math.min(t3, t4)), Math.min(t5, t6));
+            const tmax = Math.min(Math.min(Math.max(t1, t2), Math.max(t3, t4)), Math.max(t5, t6));
+            
+            if (tmax < 0 || tmin > tmax) return null;
+            
+            const t = tmin >= 0 ? tmin : tmax;
+            return t;
+        }
+        
+        // Get voxel at mouse position using improved projection
         function getVoxelFromMouse(mouseX, mouseY) {
-            if (!player) return editorState.cursorPosition;
+            if (!player || !player.useWebGL) return editorState.cursorPosition;
             
             const canvas = player.canvas;
             const rect = canvas.getBoundingClientRect();
@@ -1668,61 +1991,83 @@
             // Get camera parameters
             const rotX = player.viewRotationX || 0.3;
             const rotY = player.viewRotationY || 0.6;
+            const zoom = player.zoomLevel || 1.0;
+            
+            // Calculate camera forward direction (where camera is looking)
+            const cosX = Math.cos(rotX);
+            const sinX = Math.sin(rotX);
+            const cosY = Math.cos(rotY);
+            const sinY = Math.sin(rotY);
+            
+            // Forward vector (camera looks in this direction)
+            const forwardX = -cosX * sinY;
+            const forwardY = -sinX;
+            const forwardZ = -cosX * cosY;
+            
+            // Right vector (camera's right side)
+            const rightX = cosY;
+            const rightY = 0;
+            const rightZ = -sinY;
+            
+            // Up vector (camera's up)
+            const upX = sinX * sinY;
+            const upY = cosX;
+            const upZ = sinX * cosY;
             
             // Grid dimensions
-            const centerX = editorState.width / 2;
-            const centerY = editorState.height / 2;
-            const centerZ = editorState.depth / 2;
+            const halfW = editorState.width / 2;
+            const halfH = editorState.height / 2;
+            const halfD = editorState.depth / 2;
             
-            // Normalize rotation Y to 0-2π range
+            // Calculate projection size (matching player's orthographic projection)
+            const aspect = canvas.width / canvas.height;
+            const size = Math.max(editorState.width, editorState.height, editorState.depth) * 1.2 / zoom;
+            
+            // Project mouse position onto a plane perpendicular to camera forward
+            // The plane is at the center of the grid
+            const planePoint = [0, 0, 0]; // Center of grid
+            
+            // Calculate point on plane from mouse position
+            const worldX = planePoint[0] + normX * size * aspect * rightX + normY * size * upX;
+            const worldY = planePoint[1] + normX * size * aspect * rightY + normY * size * upY;
+            const worldZ = planePoint[2] + normX * size * aspect * rightZ + normY * size * upZ;
+            
+            // Convert world position to voxel coordinates
+            let vx = Math.floor(worldX + halfW);
+            let vy = Math.floor(worldY + halfH);
+            let vz = Math.floor(worldZ + halfD);
+            
+            // Determine which axis to lock based on viewing angle
             const rotYNorm = ((rotY % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+            let viewPlane = 'front';
             
-            // Determine primary viewing direction and map mouse to voxel
-            let x, y, z;
-            let viewPlane;
-            
-            const cosRotX = Math.cos(rotX);
-            
-            // Map based on viewing angle with full mouse sweep range
-            // Account for zoom to maintain consistent mapping
-            const zoom = player.zoomLevel || 1.0;
-            const zoomFactor = 1.0 / zoom; // Inverse zoom for correct mapping
-            
-            if (rotYNorm < Math.PI / 4 || rotYNorm > 7 * Math.PI / 4) {
-                // Front view (Z+ direction)
-                viewPlane = 'front';
-                x = Math.floor(centerX + normX * (editorState.width / 2) * zoomFactor);
-                y = Math.floor(centerY + normY * (editorState.height / 2) * cosRotX * zoomFactor);
-                z = editorState.cursorPosition.z;
-            } else if (rotYNorm >= Math.PI / 4 && rotYNorm < 3 * Math.PI / 4) {
-                // Right view (X+ direction)
+            // Lock the axis that's most perpendicular to view
+            if (rotYNorm >= Math.PI / 4 && rotYNorm < 3 * Math.PI / 4) {
+                // Right view - lock X
                 viewPlane = 'right';
-                z = Math.floor(centerZ - normX * (editorState.depth / 2) * zoomFactor);
-                y = Math.floor(centerY + normY * (editorState.height / 2) * cosRotX * zoomFactor);
-                x = editorState.cursorPosition.x;
+                vx = editorState.cursorPosition.x;
             } else if (rotYNorm >= 3 * Math.PI / 4 && rotYNorm < 5 * Math.PI / 4) {
-                // Back view (Z- direction)
+                // Back view - lock Z
                 viewPlane = 'back';
-                x = Math.floor(centerX - normX * (editorState.width / 2) * zoomFactor);
-                y = Math.floor(centerY + normY * (editorState.height / 2) * cosRotX * zoomFactor);
-                z = editorState.cursorPosition.z;
-            } else {
-                // Left view (X- direction)
+                vz = editorState.cursorPosition.z;
+            } else if (rotYNorm >= 5 * Math.PI / 4 && rotYNorm < 7 * Math.PI / 4) {
+                // Left view - lock X
                 viewPlane = 'left';
-                z = Math.floor(centerZ + normX * (editorState.depth / 2) * zoomFactor);
-                y = Math.floor(centerY + normY * (editorState.height / 2) * cosRotX * zoomFactor);
-                x = editorState.cursorPosition.x;
+                vx = editorState.cursorPosition.x;
+            } else {
+                // Front view - lock Z
+                viewPlane = 'front';
+                vz = editorState.cursorPosition.z;
             }
             
-            // Update view plane indicator
+            // Clamp to grid bounds
+            vx = Math.max(0, Math.min(editorState.width - 1, vx));
+            vy = Math.max(0, Math.min(editorState.height - 1, vy));
+            vz = Math.max(0, Math.min(editorState.depth - 1, vz));
+            
             updateViewPlaneIndicator(viewPlane);
             
-            // Clamp to grid bounds
-            x = Math.max(0, Math.min(editorState.width - 1, x));
-            y = Math.max(0, Math.min(editorState.height - 1, y));
-            z = Math.max(0, Math.min(editorState.depth - 1, z));
-            
-            return { x, y, z };
+            return { x: vx, y: vy, z: vz };
         }
         
         // Place voxel at cursor position
@@ -1928,9 +2273,9 @@
                         } else {
                             // Rotate mode: orbital rotation
                             if (player) {
-                                player.viewRotationY = dragStartRotY + dx * ROTATION_SPEED;
+                                player.viewRotationY = dragStartRotY - dx * ROTATION_SPEED;
                                 player.viewRotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, 
-                                    dragStartRotX + dy * ROTATION_SPEED));
+                                    dragStartRotX - dy * ROTATION_SPEED));
                                 player.render();
                                 drawAxisIndicator();
                             }
@@ -2650,6 +2995,289 @@
         document.getElementById('saveProject').addEventListener('click', () => saveProject());
         document.getElementById('exportFile').addEventListener('click', exportFile);
         document.getElementById('importFile').addEventListener('change', importFile);
+
+        // Image import and rendering
+        const TRACE_IMAGE_CONTAINER_WIDTH = 800;
+        const TRACE_IMAGE_CONTAINER_HEIGHT = 800;
+
+        function renderTraceImage() {
+            const imgElement = document.getElementById('traceImage');
+            if (!imgElement) return;
+            
+            // Hide HTML img element - we're using WebGL texture now
+            imgElement.style.display = 'none';
+            
+            // If player exists and trace image changed, recreate player with new image
+            if (player && editorState.traceImage) {
+                // Update player properties
+                player.traceImage = editorState.traceImage;
+                player.traceImageOpacity = (editorState.traceImageOpacity || 50) / 100;
+                player.traceImageScale = (editorState.traceImageScale || 100) / 100;
+                player.traceImagePosX = editorState.traceImagePosX || 0;
+                player.traceImagePosY = editorState.traceImagePosY || 0;
+                
+                // Reload texture if image changed
+                if (player._loadTexture && player.gl) {
+                    player._loadTexture(editorState.traceImage);
+                }
+                
+                // Re-render
+                if (player.render) {
+                    player.render();
+                }
+            } else if (player && !editorState.traceImage) {
+                // Clear trace image
+                player.traceImage = null;
+                if (player.render) {
+                    player.render();
+                }
+            }
+        }
+
+        function importImageFile(file) {
+            if (!file) return;
+            
+            if (!file.type.startsWith('image/')) {
+                alert('Please select an image file');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    editorState.traceImage = img;
+                    document.getElementById('imageControls').style.display = 'block';
+                    document.getElementById('imagePreviewContainer').style.display = 'block';
+                    
+                    // Update preview thumbnail
+                    updateImagePreview(img);
+                    
+                    // Recreate player with new trace image
+                    updatePreview();
+                };
+                img.onerror = function() {
+                    alert('Failed to load image');
+                };
+                img.src = e.target.result;
+            };
+            reader.onerror = function() {
+                alert('Failed to read image file');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function importImage(event) {
+            const file = event.target.files[0];
+            importImageFile(file);
+        }
+
+        function updateImagePreview(img) {
+            const previewImg = document.getElementById('imagePreview');
+            const previewInfo = document.getElementById('imagePreviewInfo');
+            if (previewImg && previewInfo) {
+                if (img) {
+                    previewImg.src = img.src;
+                    previewImg.style.display = 'block';
+                    previewInfo.textContent = `${img.width} × ${img.height} pixels`;
+                } else {
+                    previewImg.src = '';
+                    previewImg.style.display = 'none';
+                    previewInfo.textContent = 'No image loaded';
+                }
+            }
+        }
+
+        function clearTraceImage() {
+            editorState.traceImage = null;
+            document.getElementById('imageControls').style.display = 'none';
+            document.getElementById('imagePreviewContainer').style.display = 'none';
+            document.getElementById('importImage').value = '';
+            updateImagePreview(null);
+            renderTraceImage();
+        }
+
+        // Image control event listeners
+        document.getElementById('importImage').addEventListener('change', importImage);
+        document.getElementById('clearImage').addEventListener('click', clearTraceImage);
+
+        // Drag and drop support for image panel
+        const imagePanel = document.getElementById('image-panel');
+        const imagePreviewDropZone = document.getElementById('imagePreviewDropZone');
+        const imagePreviewDropOverlay = document.getElementById('imagePreviewDropOverlay');
+        let panelDragCounter = 0;
+
+        if (imagePanel && imagePreviewDropZone) {
+            // Prevent default drag behaviors on panel
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                imagePanel.addEventListener(eventName, function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, false);
+            });
+
+            function isImageFileInPanel(e) {
+                if (!e.dataTransfer.types.includes('Files')) return false;
+                const items = Array.from(e.dataTransfer.items);
+                return items.some(item => item.type.startsWith('image/'));
+            }
+
+            // Highlight drop zone in panel when dragging over
+            imagePanel.addEventListener('dragenter', function(e) {
+                panelDragCounter++;
+                if (isImageFileInPanel(e)) {
+                    if (imagePreviewDropOverlay) {
+                        imagePreviewDropOverlay.style.display = 'flex';
+                        imagePreviewDropOverlay.style.background = 'rgba(72, 199, 116, 0.2)';
+                        imagePreviewDropOverlay.style.borderColor = '#48c774';
+                    }
+                }
+            }, false);
+
+            imagePanel.addEventListener('dragover', function(e) {
+                if (isImageFileInPanel(e)) {
+                    e.dataTransfer.dropEffect = 'copy';
+                    if (imagePreviewDropOverlay) {
+                        imagePreviewDropOverlay.style.display = 'flex';
+                        imagePreviewDropOverlay.style.background = 'rgba(72, 199, 116, 0.2)';
+                        imagePreviewDropOverlay.style.borderColor = '#48c774';
+                    }
+                } else {
+                    e.dataTransfer.dropEffect = 'none';
+                }
+            }, false);
+
+            // Remove highlight when leaving panel
+            imagePanel.addEventListener('dragleave', function(e) {
+                panelDragCounter--;
+                if (panelDragCounter === 0) {
+                    if (imagePreviewDropOverlay) {
+                        imagePreviewDropOverlay.style.display = 'none';
+                    }
+                }
+            }, false);
+
+            // Handle dropped files in panel
+            imagePanel.addEventListener('drop', function(e) {
+                panelDragCounter = 0;
+                if (imagePreviewDropOverlay) {
+                    imagePreviewDropOverlay.style.display = 'none';
+                }
+
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    const file = files[0];
+                    if (file.type.startsWith('image/')) {
+                        importImageFile(file);
+                    } else {
+                        alert('Please drop an image file');
+                    }
+                }
+            }, false);
+        }
+
+        // Drag and drop support for image import
+        const canvasContainer = document.getElementById('canvasContainer');
+        const dragDropOverlay = document.getElementById('dragDropOverlay');
+        const dragDropOverlayAccepted = document.getElementById('dragDropOverlayAccepted');
+        let dragCounter = 0; // Track drag enter/leave to handle nested elements
+        
+        if (canvasContainer) {
+            // Prevent default drag behaviors
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                canvasContainer.addEventListener(eventName, preventDefaults, false);
+                document.body.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            function isImageFile(e) {
+                if (!e.dataTransfer.types.includes('Files')) return false;
+                const items = Array.from(e.dataTransfer.items);
+                return items.some(item => item.type.startsWith('image/'));
+            }
+            
+            // Highlight drop zone when dragging over
+            canvasContainer.addEventListener('dragenter', function(e) {
+                dragCounter++;
+                if (isImageFile(e)) {
+                    dragDropOverlayAccepted.style.display = 'flex';
+                    dragDropOverlay.style.display = 'none';
+                    canvasContainer.style.cursor = 'copy';
+                } else if (e.dataTransfer.types.includes('Files')) {
+                    dragDropOverlay.style.display = 'flex';
+                    dragDropOverlayAccepted.style.display = 'none';
+                    canvasContainer.style.cursor = 'not-allowed';
+                }
+            }, false);
+            
+            canvasContainer.addEventListener('dragover', function(e) {
+                if (isImageFile(e)) {
+                    dragDropOverlayAccepted.style.display = 'flex';
+                    dragDropOverlay.style.display = 'none';
+                    e.dataTransfer.dropEffect = 'copy';
+                } else {
+                    dragDropOverlay.style.display = 'flex';
+                    dragDropOverlayAccepted.style.display = 'none';
+                    e.dataTransfer.dropEffect = 'none';
+                }
+            }, false);
+            
+            // Remove highlight when leaving
+            canvasContainer.addEventListener('dragleave', function(e) {
+                dragCounter--;
+                if (dragCounter === 0) {
+                    dragDropOverlay.style.display = 'none';
+                    dragDropOverlayAccepted.style.display = 'none';
+                    canvasContainer.style.cursor = '';
+                }
+            }, false);
+            
+            // Handle dropped files
+            canvasContainer.addEventListener('drop', function(e) {
+                dragCounter = 0;
+                dragDropOverlay.style.display = 'none';
+                dragDropOverlayAccepted.style.display = 'none';
+                canvasContainer.style.cursor = '';
+                
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    const file = files[0];
+                    if (file.type.startsWith('image/')) {
+                        importImageFile(file);
+                    } else {
+                        alert('Please drop an image file');
+                    }
+                }
+            }, false);
+        }
+        
+        document.getElementById('imageOpacity').addEventListener('input', function(e) {
+            editorState.traceImageOpacity = parseInt(e.target.value);
+            document.getElementById('imageOpacityValue').textContent = editorState.traceImageOpacity;
+            renderTraceImage();
+        });
+        
+        document.getElementById('imageScale').addEventListener('input', function(e) {
+            editorState.traceImageScale = parseInt(e.target.value);
+            document.getElementById('imageScaleValue').textContent = editorState.traceImageScale;
+            renderTraceImage();
+        });
+        
+        document.getElementById('imagePosX').addEventListener('input', function(e) {
+            editorState.traceImagePosX = parseInt(e.target.value);
+            document.getElementById('imagePosXValue').textContent = editorState.traceImagePosX;
+            renderTraceImage();
+        });
+        
+        document.getElementById('imagePosY').addEventListener('input', function(e) {
+            editorState.traceImagePosY = parseInt(e.target.value);
+            document.getElementById('imagePosYValue').textContent = editorState.traceImagePosY;
+            renderTraceImage();
+        });
 
         // Auto-save settings
         document.getElementById('autoSaveEnabled').addEventListener('change', saveSettings);

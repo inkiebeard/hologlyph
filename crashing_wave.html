@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hologlyph Crashing Wave</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #1a1a2e;
+      color: #eee;
+      font-family: monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+    canvas {
+      border: 2px solid #16213e;
+      background: #0f3460;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    button {
+      padding: 10px 20px;
+      background: #e94560;
+      border: none;
+      color: white;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #c23854;
+    }
+    .info {
+      text-align: center;
+      max-width: 600px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🌊 Pixelated Crashing Wave</h1>
+  <canvas id="preview" width="600" height="600"></canvas>
+  
+  <div class="controls">
+    <button onclick="player.play()">▶ Play</button>
+    <button onclick="player.pause()">⏸ Pause</button>
+    <button onclick="player.stop()">⏹ Stop</button>
+    <button onclick="downloadWave()">💾 Download .glyf</button>
+  </div>
+  
+  <div class="info">
+    <p>A 16-frame animation of a wave building, cresting, and crashing with foam.</p>
+    <p>Deep blue water transitions to cyan at the crest with white foam spray.</p>
+  </div>
+
+  <script type="module">
+    import { 
+      createHologlyphHeader, 
+      HSBAUtil, 
+      HologlyphPlayer,
+      exportToFile
+    } from './hologlyph.js';
+
+    const GRID_SIZE = 24;
+    // Animation structure: flat water -> wave animation -> flat water
+    // Wave appears only in middle two-thirds of animation
+    const MAIN_ANIMATION_FRAMES = 20; // Frames with wave animation (middle two-thirds)
+    const FLAT_WATER_START_FRAMES = 10; // Frames at start with flat water
+    const FLAT_WATER_END_FRAMES = 10; // Frames at end with flat water
+    const FRAME_COUNT = FLAT_WATER_START_FRAMES + MAIN_ANIMATION_FRAMES + FLAT_WATER_END_FRAMES;
+    const FRAME_DURATION_MS = 80;
+
+    function generateCrashingWave(rotX = 0.4, rotY = 0.8) {
+      // rotX and rotY are provided by dataGenerator but not used for this animation
+      const width = GRID_SIZE;
+      const height = GRID_SIZE;
+      const depth = GRID_SIZE;
+      const bytesPerVoxel = 4;
+      
+      const { header, totalSize, frameSizeBytes } = createHologlyphHeader({
+        width:GRID_SIZE,
+        height:GRID_SIZE,
+        depth:GRID_SIZE,
+        frameCount: FRAME_COUNT,
+        frameDurationMs: FRAME_DURATION_MS,
+        loop: true,
+        loopStartFrame: 0,
+        bytesPerVoxel: 4,
+      });
+
+      
+      const buffer = new Uint8Array(totalSize);
+      
+      buffer.set(header, 0);
+
+      // Wave animation constants
+      const BASE_WAVE_HEIGHT = 4; // Base height of wave (from bottom)
+      const MAX_CREST_HEIGHT = 12; // Maximum height at crest (from bottom)
+      const WAVE_START_Z = -0.8; // Where wave starts (back)
+      const WAVE_CREST_Z = 0.0; // Where wave crests (middle)
+      const WAVE_END_Z = 0.8; // Where wave ends (front)
+      
+      // Boat constants
+      const BOAT_LENGTH = 6; // Voxels long (increased from 4)
+      const BOAT_WIDTH = 3; // Voxels wide
+      const BOAT_HEIGHT = 2; // Voxels tall
+      const MAST_HEIGHT = 6; // Voxels tall (extends upward from boat)
+      const MAST_WIDTH = 1; // Voxel wide (thin mast)
+      // Boat path: starts behind wave (-0.6), goes up face, over crest (0.0), down back (0.6)
+      const BOAT_START_RELATIVE_Z = -0.6; // Behind the wave
+      const BOAT_END_RELATIVE_Z = 0.6; // In front of the wave (after crest)
+      
+      // Generate each frame
+      for (let frame = 0; frame < FRAME_COUNT; frame++) {
+        const frameOffset = header.length + frame * frameSizeBytes;
+        
+        // Seamless wave animation: wave enters from back, moves through, exits at front
+        // Wave only appears during middle two-thirds of animation
+        const WAVE_ENTRY_Z = -1.2; // Wave starts here (off-screen back)
+        const WAVE_EXIT_Z = 1.2; // Wave ends here (off-screen front)
+        
+        let waveCenterZ;
+        let waveInScene = false;
+        
+        if (frame < FLAT_WATER_START_FRAMES) {
+          // Flat water phase: wave is off-screen behind
+          waveCenterZ = WAVE_ENTRY_Z - 0.5; // Wave still off-screen
+          waveInScene = false;
+        } else if (frame < FLAT_WATER_START_FRAMES + MAIN_ANIMATION_FRAMES) {
+          // Wave animation phase: wave moves through scene
+          const waveFrame = frame - FLAT_WATER_START_FRAMES;
+          const waveProgress = waveFrame / (MAIN_ANIMATION_FRAMES - 1); // 0 to 1
+          waveCenterZ = WAVE_ENTRY_Z + (WAVE_EXIT_Z - WAVE_ENTRY_Z) * waveProgress;
+          waveInScene = true;
+        } else {
+          // Flat water phase: wave has exited off-screen
+          waveCenterZ = WAVE_EXIT_Z + 0.5; // Wave now off-screen ahead
+          waveInScene = false;
+        }
+        
+        // Base water level (flat calm water)
+        const FLAT_WATER_HEIGHT = BASE_WAVE_HEIGHT;
+        
+        // Boat movement constraints: starts 1/3 from back edge, ends 1/3 from front edge
+        // In normalized coordinates (-1 to 1), 1/3 from edge = ±0.33
+        const BOAT_START_Z_NORMALIZED = -0.33; // 1/3 from back edge
+        const BOAT_END_Z_NORMALIZED = 0.33; // 1/3 from front edge (2/3 from back)
+        
+        // Boat is always visible and moves from start to end position
+        const overallProgress = frame / (FRAME_COUNT - 1); // 0 to 1 across all frames
+        const boatZNormalized = BOAT_START_Z_NORMALIZED + (BOAT_END_Z_NORMALIZED - BOAT_START_Z_NORMALIZED) * overallProgress;
+        
+        // Convert normalized Z to absolute Z position in world space
+        // Normalized -1 to 1 maps to world space: nz = (z - depth/2) / (depth/2)
+        // So z = nz * (depth/2) + depth/2, but in world space it's nz * (depth/2)
+        const boatZ = boatZNormalized * (depth / 2);
+        
+        // Boat's relative position to wave center (for wave height calculation)
+        // Both in normalized coordinates
+        const boatRelativeZ = boatZNormalized - waveCenterZ;
+        
+        // Boat is always visible
+        const boatIntensity = 1.0;
+        
+        let voxelIndex = 0;
+        
+        for (let z = 0; z < depth; z++) {
+          for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+              const offset = frameOffset + voxelIndex * bytesPerVoxel;
+              
+              // Normalize coordinates (centered at origin)
+              const nx = (x - width / 2) / (width / 2); // -1 to 1
+              const nz = (z - depth / 2) / (depth / 2); // -1 to 1 (back to front)
+              
+              // Distance from wave center along Z axis
+              const distanceFromWaveCenter = nz - waveCenterZ;
+              
+              // Calculate wave contribution (only if wave is near this position)
+              let waveContribution = 0;
+              
+              // Wave only contributes if it's within the scene bounds
+              if (distanceFromWaveCenter > -1.0 && distanceFromWaveCenter < 1.0) {
+                const relativeZ = distanceFromWaveCenter;
+                
+                // Wave amplitude based on position: small at back, peak at crest, small at front
+                if (relativeZ < 0) {
+                  // Before crest: building up (exponential growth)
+                  const buildFactor = Math.exp(relativeZ * 2); // 0 to 1 as we approach crest
+                  waveContribution = (MAX_CREST_HEIGHT - FLAT_WATER_HEIGHT) * buildFactor;
+                } else {
+                  // After crest: fizzling out (exponential decay)
+                  const decayFactor = Math.exp(-relativeZ * 3); // 1 to 0 as we move away from crest
+                  waveContribution = (MAX_CREST_HEIGHT - FLAT_WATER_HEIGHT) * decayFactor;
+                }
+              }
+              
+              // Total height = flat water + wave contribution
+              const waveAmplitude = FLAT_WATER_HEIGHT + waveContribution;
+              
+              // Add slight variation based on X position for wave shape
+              const xVariation = Math.sin(nx * Math.PI * 2) * 1.5;
+              const totalHeight = waveAmplitude + xVariation;
+              
+              // Determine wave state based on position relative to wave center
+              const isBeforeCrest = distanceFromWaveCenter < -0.2; // Building phase
+              const isAtCrest = Math.abs(distanceFromWaveCenter) < 0.2; // Cresting phase
+              const isAfterCrest = distanceFromWaveCenter > 0.2; // Fizzling phase
+              
+              // Determine if this voxel is part of the wave
+              // In voxel space: y=0 is top, but worldY = y - height/2, so y=0 maps to bottom in world space
+              // Fill from bottom up: water exists where y < totalHeight
+              // (y=0 is bottom in world space, so we fill from 0 to totalHeight)
+              const isWater = y < totalHeight;
+              const isNearSurface = y >= totalHeight - 2 && y < totalHeight;
+              const isCrest = isAtCrest && y >= totalHeight - 2;
+              const isFoam = isCrest && isAfterCrest; // Foam appears as wave crashes
+              
+              // Boat position - constrained to 1/3 from each edge
+              const boatCenterX = 0; // Center of boat in X (centered)
+              // Use normalized coordinates for boat position (matches nz coordinate system)
+              const boatCenterZ = boatZNormalized; // Boat Z position (normalized, -1 to 1)
+              
+              // Calculate water height at boat's position
+              // If wave is in scene, boat sits on wave; otherwise, boat sits on flat water
+              let boatWaterHeight = FLAT_WATER_HEIGHT;
+              
+              if (waveInScene) {
+                // Calculate wave height at boat's relative position
+                let boatWaveAmplitude = 0;
+                if (boatRelativeZ < 0) {
+                  // Boat is behind wave (going up the face)
+                  const buildFactor = Math.exp(boatRelativeZ * 2);
+                  boatWaveAmplitude = FLAT_WATER_HEIGHT + (MAX_CREST_HEIGHT - FLAT_WATER_HEIGHT) * buildFactor;
+                } else {
+                  // Boat is at or past crest (going down the back)
+                  const decayFactor = Math.exp(-boatRelativeZ * 3);
+                  boatWaveAmplitude = FLAT_WATER_HEIGHT + (MAX_CREST_HEIGHT - FLAT_WATER_HEIGHT) * decayFactor;
+                }
+                // Add X variation for wave shape at boat position
+                const boatXVariation = Math.sin(boatCenterX * Math.PI * 2) * 1.5;
+                boatWaterHeight = boatWaveAmplitude + boatXVariation;
+              }
+              
+              // In voxel space: y=0 is top, y increases downward
+              // Boat top sits on water surface, boat extends downward
+              const boatTopY = boatWaterHeight; // Top of boat at water surface
+              const boatCenterY = boatTopY; // Reference point for boat
+              
+              // Check if this voxel is part of the boat
+              const boatNX = nx - boatCenterX;
+              const boatNZ = nz - boatCenterZ;
+              const boatNY = boatCenterY - y; // Inverted: smaller y = higher position
+              
+              // Boat shape: simple rectangular hull with slight curve
+              const boatHalfWidth = (BOAT_WIDTH / 2) / (width / 2);
+              const boatHalfLength = (BOAT_LENGTH / 2) / (depth / 2);
+              const isInBoatX = Math.abs(boatNX) < boatHalfWidth;
+              const isInBoatZ = boatNZ > -boatHalfLength * 0.8 && boatNZ < boatHalfLength;
+              // Boat extends downward from surface: boatNY=0 is top (at surface), boatNY=BOAT_HEIGHT is bottom
+              const isInBoatY = boatNY >= 0 && boatNY < BOAT_HEIGHT;
+              
+              // Boat hull shape - slightly curved (higher in middle, like a real boat)
+              // The curve makes the boat taller in the middle (center) and shorter at edges
+              const boatCurve = 1 - Math.abs(boatNX / boatHalfWidth) * 0.4;
+              // Boat should be rendered from top (boatNY=0 at surface) down to bottom (boatNY=BOAT_HEIGHT*boatCurve)
+              // boatNY = boatCenterY - y, so smaller y values give larger boatNY (deeper/higher in boat)
+              const isInBoatHull = isInBoatX && isInBoatZ && boatNY >= 0 && boatNY < BOAT_HEIGHT * boatCurve;
+              
+              const isBoat = isInBoatHull && isInBoatY;
+              
+              // Mast - centered on boat, extends upward
+              // In voxel space: y=0 is top, smaller y = higher position
+              // Mast base is at boat top, mast extends to smaller y values (higher up)
+              const mastCenterX = boatCenterX;
+              const mastCenterZ = boatCenterZ;
+              const mastBaseY = boatTopY; // Mast base at boat top
+              const mastTopY = Math.max(0, mastBaseY - MAST_HEIGHT); // Mast top (smaller y = higher)
+              
+              const mastNX = nx - mastCenterX;
+              const mastNZ = nz - mastCenterZ;
+              
+              const mastHalfWidth = (MAST_WIDTH / 2) / (width / 2);
+              const isInMastX = Math.abs(mastNX) < mastHalfWidth;
+              const isInMastZ = Math.abs(mastNZ) < mastHalfWidth;
+              // Mast extends from boat top (mastBaseY) upward to mastTopY (smaller y)
+              const isInMastY = y <= mastTopY && y > mastBaseY;
+              const isMast = isInMastX && isInMastZ && isInMastY;
+              
+              if (isMast) {
+                // Mast color - darker brown wood
+                const h = 15 + Math.random() * 5; // Darker brown
+                const s = 65 + Math.random() * 15;
+                const b = 30 + Math.random() * 10; // Darker
+                const a = 100; // Fully opaque
+                
+                const pixel = HSBAUtil.encodePixel({ h, s, b, a });
+                buffer.set(pixel, offset);
+              } else if (isBoat) {
+                // Wooden boat colors - brown/tan hues
+                let h, s, b, a;
+                
+                // Different shades for boat parts
+                // boatNY=0 is top (at wave surface), boatNY=BOAT_HEIGHT is bottom (deeper)
+                const boatBottom = BOAT_HEIGHT * boatCurve;
+                if (boatNY < boatBottom * 0.4) {
+                  // Hull top - lighter brown (at/above wave surface)
+                  h = 18 + Math.random() * 8; // Slightly lighter brown
+                  s = 55 + Math.random() * 20;
+                  b = 45 + Math.random() * 15;
+                } else {
+                  // Hull bottom - darker brown (deeper in boat, below surface)
+                  h = 20 + Math.random() * 5; // Brown hue
+                  s = 60 + Math.random() * 15;
+                  b = 35 + Math.random() * 10;
+                }
+                
+                a = 100; // Fully opaque - boat always visible
+                
+                const pixel = HSBAUtil.encodePixel({ h, s, b, a });
+                buffer.set(pixel, offset);
+              } else if (isWater) {
+                let h, s, b, a;
+                
+                if (isFoam) {
+                  // White foam spray at crashing front
+                  h = 0;
+                  s = 0;
+                  b = 85 + Math.random() * 15; // Bright white foam
+                  a = 50 + Math.random() * 15; // Variable opacity for foam effect
+                } else if (isCrest) {
+                  // Cyan/turquoise at crest - brightest and most saturated
+                  h = 120 + Math.random() * 10; // Cyan range
+                  s = 75 + Math.random() * 20;
+                  b = 75 + Math.random() * 20;
+                  a = 85;
+                } else if (isNearSurface) {
+                  // Light blue near surface
+                  if (isBeforeCrest) {
+                    // Building wave - slightly darker
+                    h = 145 + Math.random() * 10;
+                    s = 65 + Math.random() * 20;
+                    b = 45 + Math.random() * 20;
+                  } else if (isAfterCrest) {
+                    // Fizzling wave - darker and less saturated
+                    h = 150 + Math.random() * 10;
+                    s = 50 + Math.random() * 20;
+                    b = 35 + Math.random() * 15;
+                  } else {
+                    // At crest - bright
+                    h = 140 + Math.random() * 10;
+                    s = 65 + Math.random() * 20;
+                    b = 55 + Math.random() * 20;
+                  }
+                  a = 65;
+                } else {
+                  // Deep blue water - darker at bottom
+                  const depthFactor = y / totalHeight;
+                  h = 150 + Math.random() * 10;
+                  s = 70 + Math.random() * 15;
+                  b = 15 + depthFactor * 30; // Darker at bottom, lighter near surface
+                  a = 60;
+                }
+                
+                const pixel = HSBAUtil.encodePixel({ h, s, b, a });
+                buffer.set(pixel, offset);
+              } else {
+                // Empty voxel (transparent)
+                buffer.set([0, 0, 0, 0], offset);
+              }
+              
+              voxelIndex++;
+            }
+          }
+        }
+      }
+
+      return buffer;
+    }
+
+    // Generate the wave data
+    const waveData = generateCrashingWave();
+
+    // Create player
+    const player = new HologlyphPlayer({
+      canvas: document.getElementById('preview'),
+      dataGenerator: generateCrashingWave,
+      showBoundingBox: true,
+      initialRotationX: 0.4,
+      initialRotationY: 0.8,
+    });
+    
+    // Make player globally accessible
+    window.player = player;
+
+    // Download function
+    window.downloadWave = function() {
+      exportToFile(waveData, 'crashing_wave.glyf', true);
+    };
+
+    console.log('🌊 Crashing wave generated!');
+    console.log(`Frames: ${FRAME_COUNT}, Duration: ${FRAME_DURATION_MS}ms`);
+    console.log(`Grid size: ${GRID_SIZE}³`);
+    console.log(`Total size: ${waveData.length} bytes`);
+  </script>
+</body>
+</html>

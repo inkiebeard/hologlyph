@@ -132,7 +132,10 @@ export function createHologlyphHeader(options = {}) {
   // Byte 23: Compression type (was reserved)
   u8[23] = compressionType;
 
-  return u8;
+  const frameSizeBytes = width * height * depth * bytesPerVoxel;
+  const totalSize = u8.length + frameSizeBytes * frameCount;
+
+  return { header: u8, totalSize, frameSizeBytes };
 }
 
 export function parseHologlyphHeader(input) {
@@ -348,7 +351,7 @@ export function compressGlyfFile(buffer) {
   const compressedVoxels = compressRLE(voxelData);
   
   // Create new header with compression flag
-  const newHeader = createHologlyphHeader({
+  const { header: newHeader } = createHologlyphHeader({
     width: header.width,
     height: header.height,
     depth: header.depth,
@@ -388,7 +391,7 @@ export function decompressGlyfFile(buffer) {
     const decompressedVoxels = decompressRLE(compressedVoxels, expectedLength);
     
     // Create new header without compression
-    const newHeader = createHologlyphHeader({
+    const { header: newHeader } = createHologlyphHeader({
       width: header.width,
       height: header.height,
       depth: header.depth,
@@ -474,24 +477,41 @@ function hsbToRgba(h, s, b, aPercent) {
  * 
  * @param {Object} options - Configuration options
  * @param {HTMLCanvasElement} options.canvas - Canvas element to render to
- * @param {Uint8Array} options.data - Hologlyph data buffer
- * @param {Function} [options.dataGenerator=null] - Optional function to generate data dynamically
+ * @param {Uint8Array} [options.data] - Hologlyph data buffer (required if dataGenerator not provided)
+ * @param {Function} [options.dataGenerator=null] - Optional function to generate data dynamically (allows omitting data)
  * @param {boolean} [options.autoPlay=true] - Start playing immediately
  * @param {number} [options.voxelSize=8] - Size of each voxel in pixels
- * @param {boolean} [options.orbitalDrag=false] - Enable mouse drag to rotate camera
- * @param {boolean} [options.useWebGL=false] - Use WebGL renderer (falls back to 2D)
+ * @param {boolean} [options.orbitalDrag=true] - Enable mouse drag to rotate camera
+ * @param {boolean} [options.useWebGL=true] - Use WebGL renderer (falls back to 2D)
  * @param {boolean} [options.showGrid=false] - Show per-voxel wireframe grid (deprecated)
  * @param {boolean} [options.showBoundingBox=false] - Show dynamic bounding box grid
  * @param {number} [options.initialRotationX=0.3] - Initial camera rotation X (radians)
  * @param {number} [options.initialRotationY=0.6] - Initial camera rotation Y (radians)
  */
 export class HologlyphPlayer {
-  constructor({ canvas, data, dataGenerator = null, autoPlay = true, voxelSize = 8, orbitalDrag = false, useWebGL = false, showGrid = false, showBoundingBox = false, initialRotationX = 0.3, initialRotationY = 0.6 }) {
+  constructor({ canvas, data = null, dataGenerator = null, autoPlay = true, voxelSize = 8, orbitalDrag = true, useWebGL = true, showGrid = false, showBoundingBox = false, initialRotationX = 0.3, initialRotationY = 0.6, traceImage = null, traceImageOpacity = 0.5, traceImageScale = 1.0, traceImagePosX = 0, traceImagePosY = 0 }) {
     if (!canvas) throw new Error("HologlyphPlayer needs a canvas");
+    if (!data && !dataGenerator) throw new Error("HologlyphPlayer needs either 'data' or 'dataGenerator'");
+    
     this.canvas = canvas;
     this.useWebGL = useWebGL;
     this.showGrid = showGrid;
     this.showBoundingBox = showBoundingBox;
+    this.traceImage = traceImage;
+    this.traceImageOpacity = traceImageOpacity;
+    this.traceImageScale = traceImageScale;
+    this.traceImagePosX = traceImagePosX;
+    this.traceImagePosY = traceImagePosY;
+    
+    // Store rotation values before potential generator call
+    this.viewRotationX = initialRotationX;
+    this.viewRotationY = initialRotationY;
+    this.zoomLevel = 1.0;
+    
+    // If data is not provided but dataGenerator is, generate initial data
+    if (!data && dataGenerator) {
+      data = dataGenerator(initialRotationX, initialRotationY);
+    }
     
     // Convert to Uint8Array and decompress if needed
     let rawData = data instanceof Uint8Array ? data : new Uint8Array(data);
@@ -513,7 +533,9 @@ export class HologlyphPlayer {
     
     // Initialize rendering AFTER dimensions are set
     if (useWebGL) {
-      this.gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+      // Request WebGL context with alpha channel for transparency
+      this.gl = canvas.getContext("webgl", { alpha: true, premultipliedAlpha: false }) || 
+                canvas.getContext("experimental-webgl", { alpha: true, premultipliedAlpha: false });
       if (!this.gl) throw new Error("WebGL not supported");
       this._initWebGL();
     } else {
@@ -537,9 +559,6 @@ export class HologlyphPlayer {
 
     // Orbital drag support and camera rotation
     this.dataGenerator = dataGenerator;
-    this.viewRotationX = initialRotationX;
-    this.viewRotationY = initialRotationY;
-    this.zoomLevel = 1.0;
     
     if (orbitalDrag) {
       this._setupOrbitalDrag();
@@ -743,8 +762,8 @@ export class HologlyphPlayer {
         vec3 normal = normalize(vNormal);
         vec3 lightDir = normalize(uLightDirection);
         
-        float ambient = 0.4;
-        float diffuse = max(dot(normal, lightDir), 0.0) * 0.6;
+        float ambient = 0.65;
+        float diffuse = max(dot(normal, lightDir), 0.0) * 0.35;
         float lighting = ambient + diffuse;
         
         gl_FragColor = vec4(vColor.rgb * lighting, vColor.a);
@@ -789,10 +808,222 @@ export class HologlyphPlayer {
       this._createGridGeometry();
     }
     
+    // Create texture shader program for trace image if image is provided
+    if (this.traceImage) {
+      this._initTextureShader();
+      this._createTextureQuad();
+      this._loadTexture(this.traceImage);
+    }
+    
     // Enable depth testing
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  }
+
+  _initTextureShader() {
+    const gl = this.gl;
+    
+    // Simple texture shader for trace image
+    const textureVertexShaderSource = `
+      attribute vec3 aPosition;
+      attribute vec2 aTexCoord;
+      
+      uniform mat4 uModelMatrix;
+      uniform mat4 uViewMatrix;
+      uniform mat4 uProjectionMatrix;
+      
+      varying vec2 vTexCoord;
+      
+      void main() {
+        vTexCoord = aTexCoord;
+        gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * vec4(aPosition, 1.0);
+      }
+    `;
+    
+    const textureFragmentShaderSource = `
+      precision mediump float;
+      
+      varying vec2 vTexCoord;
+      uniform sampler2D uTexture;
+      uniform float uOpacity;
+      
+      void main() {
+        vec4 texColor = texture2D(uTexture, vTexCoord);
+        gl_FragColor = vec4(texColor.rgb, texColor.a * uOpacity);
+      }
+    `;
+    
+    const vertexShader = this._createShader(gl, gl.VERTEX_SHADER, textureVertexShaderSource);
+    const fragmentShader = this._createShader(gl, gl.FRAGMENT_SHADER, textureFragmentShaderSource);
+    
+    const program = gl.createProgram();
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+    
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      throw new Error("Texture program link failed: " + gl.getProgramInfoLog(program));
+    }
+    
+    this.textureProgram = program;
+    this.textureAttribLocations = {
+      position: gl.getAttribLocation(program, "aPosition"),
+      texCoord: gl.getAttribLocation(program, "aTexCoord"),
+    };
+    this.textureUniformLocations = {
+      modelMatrix: gl.getUniformLocation(program, "uModelMatrix"),
+      viewMatrix: gl.getUniformLocation(program, "uViewMatrix"),
+      projectionMatrix: gl.getUniformLocation(program, "uProjectionMatrix"),
+      texture: gl.getUniformLocation(program, "uTexture"),
+      opacity: gl.getUniformLocation(program, "uOpacity"),
+    };
+  }
+
+  _createTextureQuad() {
+    const gl = this.gl;
+    const { width, height, depth } = this;
+    
+    // Create a quad at the back face of the grid (z = -depth/2)
+    // Quad spans the XY plane at the back, matching grid dimensions
+    const halfWidth = width / 2;
+    const halfHeight = height / 2;
+    const backZ = -depth / 2 - 0.1; // Slightly behind the back face to ensure it's visible
+    
+    // Vertices: 4 corners of the quad (centered at origin, at back Z position)
+    const vertices = new Float32Array([
+      -halfWidth, -halfHeight, backZ,  // bottom-left
+       halfWidth, -halfHeight, backZ,  // bottom-right
+       halfWidth,  halfHeight, backZ,  // top-right
+      -halfWidth,  halfHeight, backZ,  // top-left
+    ]);
+    
+    // Texture coordinates (flip Y to match image orientation)
+    const texCoords = new Float32Array([
+      0.0, 1.0,  // bottom-left
+      1.0, 1.0,  // bottom-right
+      1.0, 0.0,  // top-right
+      0.0, 0.0,  // top-left
+    ]);
+    
+    // Indices for two triangles
+    const indices = new Uint16Array([
+      0, 1, 2,
+      0, 2, 3,
+    ]);
+    
+    // Create buffers
+    const positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+    
+    const texCoordBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+    
+    const indexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+    
+    this.textureQuad = {
+      positionBuffer,
+      texCoordBuffer,
+      indexBuffer,
+      indexCount: indices.length,
+    };
+  }
+
+  _loadTexture(image) {
+    if (!this.gl) return;
+    
+    const gl = this.gl;
+    
+    // Initialize texture shader and quad if not already done
+    if (!this.textureProgram) {
+      this._initTextureShader();
+      this._createTextureQuad();
+    }
+    
+    // Create texture if it doesn't exist
+    if (!this.texture) {
+      this.texture = gl.createTexture();
+    }
+    
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    
+    // Set texture parameters
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    
+    // Upload image to texture
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+  }
+
+  _renderTraceImage() {
+    if (!this.textureProgram || !this.textureQuad || !this.texture) return;
+    
+    const gl = this.gl;
+    const { width, height, depth } = this;
+    
+    // Use texture shader program
+    gl.useProgram(this.textureProgram);
+    
+    // Set up matrices (same as main rendering)
+    const aspect = this.canvas.width / this.canvas.height;
+    const size = Math.max(width, height, depth) * 1.2 / this.zoomLevel;
+    const projectionMatrix = this._createOrthographicMatrix(
+      -size * aspect, size * aspect,
+      -size, size,
+      0.1, 1000.0
+    );
+    gl.uniformMatrix4fv(this.textureUniformLocations.projectionMatrix, false, projectionMatrix);
+    
+    const cameraDistance = Math.max(width, height, depth) * 2.5;
+    const viewMatrix = this._createViewMatrix(cameraDistance);
+    gl.uniformMatrix4fv(this.textureUniformLocations.viewMatrix, false, viewMatrix);
+    
+    // Create model matrix with scale and position adjustments
+    // The quad is already positioned at the back face, just need to scale and translate
+    const scaleX = this.traceImageScale;
+    const scaleY = this.traceImageScale;
+    const translateX = this.traceImagePosX;
+    const translateY = this.traceImagePosY;
+    
+    const modelMatrix = new Float32Array([
+      scaleX, 0, 0, 0,
+      0, scaleY, 0, 0,
+      0, 0, 1, 0,
+      translateX, translateY, 0, 1
+    ]);
+    gl.uniformMatrix4fv(this.textureUniformLocations.modelMatrix, false, modelMatrix);
+    
+    // Set texture and opacity
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.uniform1i(this.textureUniformLocations.texture, 0);
+    gl.uniform1f(this.textureUniformLocations.opacity, this.traceImageOpacity);
+    
+    // Enable blending for transparency
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    
+    // Bind buffers
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.textureQuad.positionBuffer);
+    gl.enableVertexAttribArray(this.textureAttribLocations.position);
+    gl.vertexAttribPointer(this.textureAttribLocations.position, 3, gl.FLOAT, false, 0, 0);
+    
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.textureQuad.texCoordBuffer);
+    gl.enableVertexAttribArray(this.textureAttribLocations.texCoord);
+    gl.vertexAttribPointer(this.textureAttribLocations.texCoord, 2, gl.FLOAT, false, 0, 0);
+    
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.textureQuad.indexBuffer);
+    
+    // Draw with depth testing but allow it to be behind voxels
+    gl.depthMask(false); // Don't write to depth buffer
+    gl.drawElements(gl.TRIANGLES, this.textureQuad.indexCount, gl.UNSIGNED_SHORT, 0);
+    gl.depthMask(true); // Re-enable depth writing for voxels
   }
 
   _createShader(gl, type, source) {
@@ -1010,6 +1241,12 @@ export class HologlyphPlayer {
       canvas.removeEventListener('touchstart', this._zoomHandlers.onTouchStart);
       canvas.removeEventListener('touchmove', this._zoomHandlers.onTouchMove);
     }
+    
+    // Clean up label overlay
+    if (this.labelOverlay && this.labelOverlay.parentElement) {
+      this.labelOverlay.parentElement.removeChild(this.labelOverlay);
+      this.labelOverlay = null;
+    }
   }
 
   play() {
@@ -1190,6 +1427,92 @@ export class HologlyphPlayer {
     gl.depthMask(true);
   }
 
+  _renderGridLabels() {
+    if (!this.useWebGL || !this.showBoundingBox) return;
+    
+    // Create a simple div overlay for labels if it doesn't exist
+    if (!this.labelOverlay) {
+      this.labelOverlay = document.createElement('div');
+      this.labelOverlay.style.position = 'absolute';
+      this.labelOverlay.style.pointerEvents = 'none';
+      this.labelOverlay.style.color = 'rgba(200, 200, 200, 0.9)';
+      this.labelOverlay.style.fontFamily = 'monospace';
+      this.labelOverlay.style.fontSize = '12px';
+      this.labelOverlay.style.whiteSpace = 'pre';
+      this.labelOverlay.style.zIndex = '1000';
+      
+      // Position relative to canvas
+      const parent = this.canvas.parentElement || document.body;
+      parent.style.position = parent.style.position || 'relative';
+      parent.appendChild(this.labelOverlay);
+    }
+    
+    // Update overlay position to match canvas
+    const rect = this.canvas.getBoundingClientRect();
+    this.labelOverlay.style.left = rect.left + 'px';
+    this.labelOverlay.style.top = rect.top + 'px';
+    this.labelOverlay.style.width = rect.width + 'px';
+    this.labelOverlay.style.height = rect.height + 'px';
+    
+    const { width, height, depth } = this;
+    const halfWidth = width / 2;
+    const halfHeight = height / 2;
+    const halfDepth = depth / 2;
+    
+    // Corner positions in world space
+    const corners = [
+      { x: -halfWidth, y: -halfHeight, z: -halfDepth, label: `0,0,0` },
+      { x: halfWidth, y: halfHeight, z: halfDepth, label: `${width-1},${height-1},${depth-1}` },
+    ];
+    
+    // Get current matrices for coordinate conversion
+    const aspect = this.canvas.width / this.canvas.height;
+    const size = Math.max(width, height, depth) * 1.2 / this.zoomLevel;
+    const projectionMatrix = this._createOrthographicMatrix(
+      -size * aspect, size * aspect,
+      -size, size,
+      0.1, 1000.0
+    );
+    const cameraDistance = Math.max(width, height, depth) * 2.5;
+    const viewMatrix = this._createViewMatrix(cameraDistance);
+    
+    // Build HTML for labels positioned absolutely
+    let labelsHTML = '';
+    corners.forEach(corner => {
+      const worldPos = [corner.x, corner.y, corner.z, 1];
+      const viewPos = this._multiplyMatrixVector(viewMatrix, worldPos);
+      const clipPos = this._multiplyMatrixVector(projectionMatrix, viewPos);
+      
+      if (Math.abs(clipPos[3]) > 0.0001) {
+        const ndcX = clipPos[0] / clipPos[3];
+        const ndcY = clipPos[1] / clipPos[3];
+        
+        if (ndcX >= -1 && ndcX <= 1 && ndcY >= -1 && ndcY <= 1) {
+          const screenX = (ndcX + 1) * 0.5 * 100; // Percentage
+          const screenY = (1 - ndcY) * 0.5 * 100;
+          
+          const margin = 2; // 2% margin
+          if (screenX < margin || screenX > 100 - margin ||
+              screenY < margin || screenY > 100 - margin) {
+            labelsHTML += `<span class="hologlyph-label" style="position: absolute; left: ${screenX}%; top: ${screenY}%; transform: translate(-50%, -50%);">${corner.label}</span>`;
+          }
+        }
+      }
+    });
+    
+    this.labelOverlay.innerHTML = labelsHTML;
+  }
+
+  _multiplyMatrixVector(matrix, vector) {
+    const result = [0, 0, 0, 0];
+    for (let i = 0; i < 4; i++) {
+      for (let j = 0; j < 4; j++) {
+        result[i] += matrix[i * 4 + j] * vector[j];
+      }
+    }
+    return result;
+  }
+
   _renderWebGL() {
     const gl = this.gl;
     const { width, height, depth } = this;
@@ -1197,6 +1520,11 @@ export class HologlyphPlayer {
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(0.0, 0.0, 0.0, 0.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    // Render trace image texture on back face BEFORE voxels
+    if (this.traceImage && this.textureProgram && this.textureQuad) {
+      this._renderTraceImage();
+    }
 
     gl.useProgram(this.program);
 
@@ -1275,6 +1603,7 @@ export class HologlyphPlayer {
     // Draw bounding box grid AFTER solid voxels for proper depth ordering
     if (this.showBoundingBox) {
       this._renderGrid();
+      this._renderGridLabels();
     }
   }
 
